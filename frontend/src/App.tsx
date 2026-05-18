@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle, BarChart2, Search, Loader2 } from 'lucide-react';
 import './App.css';
-import type { TaskPreview, UserSession } from './types';
+import type { TaskPreview, UserSession, StatsItem } from './types';
 
 // 自动检测 API 地址：开发环境默认 8000 端口，生产环境使用相对路径（由 Nginx 代理）
 const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
@@ -22,7 +22,7 @@ function App() {
   const [secretKey, setSecretKey] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'auth' | 'task' | 'history'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'task' | 'history' | 'stats'>('auth');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [sessions, setSessions] = useState<UserSession[]>([]);
@@ -37,6 +37,14 @@ function App() {
   const [historyTasks, setHistoryTasks] = useState<any[]>([]);
   const [historyLogs, setHistoryLogs] = useState<string[]>([]);
   const [showHistoryLogs, setShowHistoryLogs] = useState(false);
+
+  // 统计模块状态
+  const [corps, setCorps] = useState<string[]>([]);
+  const [selectedCorp, setSelectedCorp] = useState('');
+  const [tagType, setTagType] = useState<'smart' | 'enterprise'>('smart');
+  const [tagName, setTagName] = useState('');
+  const [statsResults, setStatsResults] = useState<StatsItem[]>([]);
+  const [isStatsQuerying, setIsStatsQuerying] = useState(false);
   
   const consoleRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -110,8 +118,58 @@ function App() {
   useEffect(() => {
     if (activeTab === 'history') {
       fetchHistory();
+    } else if (activeTab === 'stats') {
+      fetchCorps();
     }
   }, [activeTab]);
+
+  const fetchCorps = async () => {
+    if (!selectedMobile) return;
+    try {
+      const res = await axios.get(`${API_BASE}/api/stats/corps?mobile=${selectedMobile}`);
+      setCorps(res.data);
+      if (res.data.length > 0 && !selectedCorp) {
+        setSelectedCorp(res.data[0]);
+      }
+    } catch (err) {
+      console.error("Fetch corps failed", err);
+    }
+  };
+
+  const handleQueryStats = async () => {
+    if (!selectedMobile) return addToast("请先选择授权账号", "warning");
+    if (!selectedCorp) return addToast("请选择企业简称", "warning");
+    if (!tagName) return addToast("请输入标签名字", "warning");
+
+    setIsStatsQuerying(true);
+    try {
+      // 先检测授权是否过期
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      const res = await axios.post(`${API_BASE}/api/stats/query?mobile=${selectedMobile}`, {
+        corp_name: selectedCorp,
+        tag_type: tagType,
+        tag_name: tagName
+      });
+      setStatsResults(res.data);
+      if (res.data.length === 0) {
+        addToast("未查找到匹配数据", "info");
+      } else {
+        addToast(`查询成功，共 ${res.data.length} 条记录`, "success");
+      }
+    } catch (err: any) {
+      addToast("查询失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsStatsQuerying(false);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -229,6 +287,17 @@ function App() {
     if (previewTasks.length === 0) return addToast("请先上传 Excel 任务文件", "warning");
 
     try {
+      // 1. 先检测授权是否过期
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions(); // 刷新列表，过期账号会被后端自动删除
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      // 2. 授权有效，开始任务
       const res = await axios.post(`${API_BASE}/api/tasks/start?mobile=${selectedMobile}`, {
         tasks: previewTasks,
         concurrency: concurrency
@@ -354,6 +423,7 @@ function App() {
             <div className={`tab ${activeTab === 'auth' ? 'active' : ''}`} onClick={() => setActiveTab('auth')}>ACCESS AUTH</div>
             <div className={`tab ${activeTab === 'task' ? 'active' : ''}`} onClick={() => setActiveTab('task')}>WORK TERMINAL</div>
             <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>TASK HISTORY</div>
+            <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>DATA STATS</div>
           </div>
 
           {activeTab === 'auth' ? (
@@ -487,7 +557,7 @@ function App() {
             </div>
           </div>
         </>
-      ) : (
+      ) : activeTab === 'history' ? (
         <div className="card">
           <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
             <h3>任务执行历史</h3>
@@ -568,6 +638,111 @@ function App() {
               </div>
             </div>
           )}
+          </div>
+        ) : (
+          <div className="grid" style={{gridTemplateColumns: '1fr'}}>
+            <div className="card">
+              <div style={{display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1.5rem'}}>
+                <div className="input-group" style={{width: '280px', marginBottom: 0}}>
+                  <label>企业简称</label>
+                  <select value={selectedCorp} onChange={e => setSelectedCorp(e.target.value)}>
+                    <option value="">请选择企业</option>
+                    {corps.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                
+                <div className="input-group" style={{width: 'auto', marginBottom: 0}}>
+                  <label>标签类型</label>
+                  <div style={{display: 'flex', gap: '1.5rem', height: '42px', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: '0 1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)'}}>
+                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0}}>
+                      <input type="radio" checked={tagType === 'smart'} onChange={() => setTagType('smart')} /> 智能标签
+                    </label>
+                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0}}>
+                      <input type="radio" checked={tagType === 'enterprise'} onChange={() => setTagType('enterprise')} /> 企业标签
+                    </label>
+                  </div>
+                </div>
+
+                <div className="input-group" style={{flex: 1, minWidth: '200px', marginBottom: 0}}>
+                  <label>标签名称</label>
+                  <div style={{position: 'relative'}}>
+                    <input 
+                      type="text" 
+                      value={tagName} 
+                      onChange={e => setTagName(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && handleQueryStats()}
+                      placeholder="请输入完整的标签名字" 
+                    />
+                    <Search size={18} style={{position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.3}} />
+                  </div>
+                </div>
+
+                <button 
+                  className="btn btn-primary" 
+                  style={{height: '42px', padding: '0 2rem'}} 
+                  onClick={handleQueryStats}
+                  disabled={isStatsQuerying}
+                >
+                  {isStatsQuerying ? <><Loader2 className="animate-spin" size={18} style={{marginRight: '0.5rem'}} /> 查询中</> : <><BarChart2 size={18} style={{marginRight: '0.5rem'}} /> 开始统计</>}
+                </button>
+              </div>
+
+              <div style={{marginTop: '2rem'}}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                  <h4 style={{color: 'var(--accent-purple)'}}>查询结果 {statsResults.length > 0 && `(${statsResults.length} 条)`}</h4>
+                  {statsResults.length > 0 && (
+                    <button className="btn btn-outline" style={{fontSize: '0.8rem', padding: '0.4rem 0.8rem'}} onClick={() => {
+                      const csv = ["员工名,标签名字,用户数", ...statsResults.map(r => `${r.employee_name},${r.tag_name},${r.user_count}`)].join('\n');
+                      const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `stats-${selectedCorp}-${tagName}.csv`;
+                      a.click();
+                    }}>
+                      <Download size={14} style={{marginRight: '0.4rem'}} /> 导出 CSV
+                    </button>
+                  )}
+                </div>
+                
+                <div style={{maxHeight: '500px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
+                  <table className="preview-table">
+                    <thead>
+                      <tr>
+                        <th>员工名</th>
+                        <th>标签名字</th>
+                        <th>用户数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statsResults.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>{item.employee_name}</td>
+                          <td><span className="status-badge" style={{backgroundColor: 'rgba(168, 85, 247, 0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(168, 85, 247, 0.2)'}}>{item.tag_name}</span></td>
+                          <td style={{fontWeight: 600, color: 'var(--accent-cyan)'}}>{item.user_count}</td>
+                        </tr>
+                      ))}
+                      {statsResults.length === 0 && !isStatsQuerying && (
+                        <tr>
+                          <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                            <BarChart2 size={48} style={{opacity: 0.1, marginBottom: '1rem'}} />
+                            <p>暂无统计数据，请在上方输入条件后点击开始统计</p>
+                          </td>
+                        </tr>
+                      )}
+                      {isStatsQuerying && (
+                        <tr>
+                          <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                            <div className="loading-spinner" style={{margin: '0 auto 1rem'}}></div>
+                            <p>正在拉取企微宝数据，请稍候...</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </>

@@ -39,3 +39,13 @@ class TaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class StatsQueryRequest(BaseModel):
+    corp_name: str
+    tag_type: str # 'smart' or 'enterprise'
+    tag_name: str
+
+class StatsItem(BaseModel):
+    employee_name: str
+    tag_name: str
+    user_count: int

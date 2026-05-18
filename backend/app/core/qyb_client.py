@@ -34,4 +34,5 @@ def login_qyb(mobile, password):
         else:
             raise Exception("登录接口调用成功，但未能在响应中找到 PHPSESSID。")
     else:
-        raise Exception(f"登录失败: {res_data.get('errmsg', '未知错误')}")
+        msg = res_data.get('errmsg') or res_data.get('message') or '未知错误'
+        raise Exception(f"登录失败: {msg}")

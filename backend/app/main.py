@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from . import models, schemas, database
 from .core.qyb_client import login_qyb
-from .core.fission_engine import run_fission_task
+from .core.fission_engine import run_fission_task, get_wechat_accounts, get_stats_data
 
 app = FastAPI(title="企微宝好友裂变平台")
 
@@ -138,6 +138,30 @@ async def get_sessions(db: Session = Depends(database.get_db)):
     users = db.query(models.UserSession).all()
     return users
 
+@app.get("/api/auth/check-session/{mobile}")
+async def check_session_validity(mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    
+    # 调用 QYB 的 authInfo 接口验证 session
+    from .core.qyb_client import BASE_URL, HEADERS
+    api_url = f"{BASE_URL}/api/user/authInfo"
+    try:
+        response = requests.get(api_url, cookies={'PHPSESSID': user.session_id}, headers=HEADERS, timeout=10)
+        res_data = response.json()
+        if res_data.get('errcode') == 0:
+            return {"status": "valid"}
+        else:
+            # Session 失效，从数据库删除
+            db.delete(user)
+            db.commit()
+            msg = res_data.get('errmsg') or res_data.get('message') or '授权已过期'
+            return {"status": "expired", "message": msg}
+    except Exception as e:
+        # 网络错误等不直接删除，仅报错
+        raise HTTPException(status_code=500, detail=f"检查授权状态失败: {str(e)}")
+
 @app.delete("/api/auth/sessions/{mobile}")
 async def delete_session(mobile: str, db: Session = Depends(database.get_db)):
     user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
@@ -146,6 +170,35 @@ async def delete_session(mobile: str, db: Session = Depends(database.get_db)):
     db.delete(user)
     db.commit()
     return {"status": "success"}
+
+@app.get("/api/stats/corps")
+async def get_corps(mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    
+    try:
+        accounts = get_wechat_accounts(user.session_id)
+        corps = sorted(list(set(info['corp_name'] for info in accounts.values() if info.get('corp_name'))))
+        if not corps:
+            raise HTTPException(status_code=404, detail="该账号下未找到任何企业信息")
+        return corps
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stats/query", response_model=List[schemas.StatsItem])
+async def query_stats(req: schemas.StatsQueryRequest, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    
+    try:
+        results = get_stats_data(user.session_id, req.corp_name, req.tag_type, req.tag_name)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/tasks/parse-excel")
 async def parse_excel(file: UploadFile = File(...)):

@@ -16,17 +16,23 @@ def get_wechat_accounts(session_id):
     response = requests.get(api_url, cookies={'PHPSESSID': session_id}, headers=HEADERS)
     res_data = response.json()
     if res_data.get('errcode') != 0:
-        raise Exception(f"获取账号列表失败: {res_data.get('errmsg', '未知错误')}")
+        msg = res_data.get('errmsg') or res_data.get('message') or '未知错误'
+        raise Exception(f"获取账号列表失败: {msg}")
     accounts_map = {}
     for item in res_data.get('data', []):
         nickname = item.get('nickname')
         corp_name = item.get('corp_name', '企业微信')
         display_name = f"{nickname}@{corp_name}" if corp_name else nickname
+        # 确保 corp_id 是数字类型的企业 ID (如 12461)
+        # 企微宝中这个字段有时叫 corp_id，有时叫 wechat_corp_id
+        corp_id = item.get('corp_id') or item.get('wechat_corp_id') or ""
+        
         accounts_map[display_name] = {
             "wxid": item.get('wxid'),
             "nickname": nickname,
             "avatar": item.get('avatar', ''),
             "corp_wxid": item.get('corp_wxid', ''),
+            "corp_id": corp_id,
             "corp_name": corp_name
         }
     return accounts_map
@@ -42,24 +48,104 @@ def get_customer_by_name(session_id, rel_wxid, receiver_name, receiver_wxid, pre
                 return item
     return None
 
-def get_tag_id_by_name(session_id, tag_name):
-    api_url = f"{BASE_URL}/api/module_tag/list?module=47,52,53,54,55,96,97&page=1&page_size=999&type=2&with_tags=1"
+def get_tag_id_by_name(session_id, tag_name, tag_type="smart", corp_id=None):
+    if tag_type == "enterprise":
+        # 企业标签使用特定的接口
+        api_url = f"{BASE_URL}/api/wechat/corpTags?corp_id={corp_id or ''}&type=1&wechat_wxid=&stat_contact_cnt=0"
+    else:
+        # 智能标签使用模块标签列表接口
+        api_url = f"{BASE_URL}/api/module_tag/list?module=47,52,53,54,55,96,97&page=1&page_size=999&type=2&with_tags=1"
+
     response = requests.get(api_url, cookies={'PHPSESSID': session_id}, headers=HEADERS)
     res_data = response.json()
-    
+
+    found_tags = []
+    # 企微宝返回的数据结构可能不同
+    tag_root = res_data.get('data') or res_data.get('tags') or res_data
+
     def search_id(data):
         if isinstance(data, list):
             for item in data:
                 res = search_id(item)
                 if res: return res
         elif isinstance(data, dict):
-            if data.get('name') == tag_name and 'id' in data:
-                return data['id']
-            for key, val in data.items():
-                res = search_id(val)
-                if res: return res
+            # 适配各种可能的键名
+            name = data.get('wx_name') or data.get('name') or data.get('tag_name') or data.get('group_name')
+            tag_id = data.get('wxid') or data.get('id') or data.get('tag_id')
+
+            if name:
+                found_tags.append(name)
+
+            if name == tag_name and tag_id:
+                return tag_id
+
+            # 递归搜索子节点
+            for key in ['tags', 'children', 'dis_list', 'data']:
+                if key in data and data[key]:
+                    res = search_id(data[key])
+                    if res: return res
         return None
-    return search_id(res_data)
+
+    result = search_id(tag_root)
+    return result
+
+
+def get_customers_count_by_tag(session_id, rel_wxid, tag_id, tag_type="smart"):
+    api_url = f"{BASE_URL}/api/wechat/contacts"
+    # 根据用户提供的 curl，企业标签使用 corp_tag
+    tag_key = "smart_tag" if tag_type == "smart" else "corp_tag"
+    
+    payload = {
+        "rel_wxid": rel_wxid,
+        "page": 1,
+        "page_size": 1, # 只取总数
+        "include_params": {tag_key: {"match_type": "1", "ids": [tag_id]}}
+    }
+    response = requests.post(api_url, json=payload, cookies={'PHPSESSID': session_id}, headers=HEADERS)
+    res_data = response.json()
+    # 根据用户反馈，总数在 pager.numRecords 中
+    return res_data.get('pager', {}).get('numRecords', 0)
+
+def get_stats_data(session_id, corp_name, tag_type, tag_name):
+    accounts_map = get_wechat_accounts(session_id)
+    
+    # 筛选对应企业的员工
+    employees = []
+    for display_name, info in accounts_map.items():
+        if info['corp_name'] == corp_name:
+            employees.append(info)
+            
+    if not employees:
+        return []
+    
+    # 获取第一个员工的 corp_id 用于获取企业标签 (必须是数字 ID，不能传 corp_wxid)
+    first_emp = employees[0]
+    target_corp_id = first_emp.get('corp_id') or ""
+        
+    tag_id = get_tag_id_by_name(session_id, tag_name, tag_type, corp_id=target_corp_id)
+    if not tag_id:
+        raise Exception(f"未找到标签【{tag_name}】")
+        
+    def fetch_emp_stats(emp):
+        try:
+            count = get_customers_count_by_tag(session_id, emp['wxid'], str(tag_id), tag_type)
+            return {
+                "employee_name": emp['nickname'],
+                "tag_name": tag_name,
+                "user_count": count
+            }
+        except Exception as e:
+            return {
+                "employee_name": emp['nickname'],
+                "tag_name": tag_name,
+                "user_count": 0
+            }
+
+    # 使用线程池并发查询，提高统计速度 (保持 8 路并发，兼顾速度与安全)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(fetch_emp_stats, employees))
+        
+    return results
 
 def get_customers_by_tag(session_id, rel_wxid, tag_id, page_size=50):
     api_url = f"{BASE_URL}/api/wechat/contacts"
@@ -94,7 +180,8 @@ def get_ws_url(session_id):
     data = response.json()
     if data.get('errcode') == 0:
         return data['data']['url']
-    raise Exception(f"获取WS地址失败: {data.get('errmsg')}")
+    msg = data.get('errmsg') or data.get('message') or '未知错误'
+    raise Exception(f"获取WS地址失败: {msg}")
 
 def send_card_message(ws, config, to_wxid, card_info):
     tmp_id = str(uuid.uuid4())[:12]

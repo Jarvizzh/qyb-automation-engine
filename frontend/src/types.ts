@@ -19,3 +19,9 @@ export interface TaskRecord {
   status: string;
   created_at: string;
 }
+
+export interface StatsItem {
+  employee_name: string;
+  tag_name: string;
+  user_count: number;
+}
