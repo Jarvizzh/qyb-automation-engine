@@ -160,8 +160,6 @@ function App() {
           fetchGsGroups();
         } else if (opsSubTab === 'sop') {
           fetchSopTemplates();
-        } else if (opsSubTab === 'reports') {
-          fetchRetentionReports();
         } else if (opsSubTab === 'stats') {
           fetchCorps();
         }
@@ -175,8 +173,6 @@ function App() {
         fetchGsGroups();
       } else if (opsSubTab === 'sop') {
         fetchSopTemplates();
-      } else if (opsSubTab === 'reports') {
-        fetchRetentionReports();
       } else if (opsSubTab === 'stats') {
         fetchCorps();
       }

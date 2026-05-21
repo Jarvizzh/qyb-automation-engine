@@ -531,10 +531,11 @@ async def ops_get_retention_report(mobile: str, db: Session = Depends(database.g
     if not user:
         raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
     try:
+        import concurrent.futures
         client = get_miaokol_client(user.session_id)
         corps = client.get_corps()
-        report = []
-        for corp in corps:
+        
+        def fetch_corp_retention(corp):
             corp_name = corp.get('short_name') or corp.get('name')
             try:
                 total_res = client.search_customers(corp_name=corp_name, page_size=1)
@@ -547,15 +548,25 @@ async def ops_get_retention_report(mobile: str, db: Session = Depends(database.g
                 lost_cnt = lost_res.get('distinct_contact_cnt', 0)
                 
                 rate = round((normal_cnt / total_cnt) * 100, 2) if total_cnt > 0 else 0
-                report.append({
+                return {
                     "name": corp_name,
                     "total": total_cnt,
                     "normal": normal_cnt,
                     "lost": lost_cnt,
                     "retention_rate": rate
-                })
+                }
             except Exception as inner_e:
                 print(f"Error querying retention stats for corp '{corp_name}': {inner_e}")
+                return None
+
+        report = []
+        if corps:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(corps), 15)) as executor:
+                futures = [executor.submit(fetch_corp_retention, corp) for corp in corps]
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        report.append(result)
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
