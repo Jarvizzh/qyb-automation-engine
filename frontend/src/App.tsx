@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle, BarChart2, Search, Loader2, BookOpen, Users, RefreshCw, Calendar } from 'lucide-react';
+import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle, BarChart2, Search, Loader2, BookOpen, Users, RefreshCw } from 'lucide-react';
 import './App.css';
 import type { TaskPreview, UserSession, StatsItem, GroupItem, GroupTaskItem, SopTemplateItem, SopUrlItem, RetentionReportItem } from './types';
 
@@ -1337,7 +1337,6 @@ function App() {
                   {opsSubTab === 'sop' && (
                     <div>
                       <div className="input-group" style={{marginBottom: '2rem'}}>
-                        <label>选择 SOP 模板进行治理</label>
                         <select 
                           value={selectedSopTemplateId} 
                           onChange={e => {
@@ -1360,14 +1359,12 @@ function App() {
 
                       {!isSopLoading && selectedSopTemplateId && (
                         <div style={{marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '2rem'}}>
-                          <h4 style={{color: 'var(--accent-purple)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                            <Calendar size={18} /> 模板每日 SOP 节点及链接分布
-                          </h4>
-
                           <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem'}}>
                             {/* Left: Nodes Table */}
                             <div>
-                              <h5 style={{color: 'var(--text-main)', marginBottom: '1rem'}}>1. 模板详情清单 ({sopUrls.length} 个节点)</h5>
+                              <h4 style={{color: 'var(--accent-purple)', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                <BookOpen size={20} /> 1. 模板详情清单 ({sopUrls.length} 个节点)
+                              </h4>
                               <div style={{maxHeight: '554px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
                                 <table className="preview-table">
                                   <thead>
@@ -1406,7 +1403,9 @@ function App() {
 
                             {/* Right: Governance Actions */}
                             <div>
-                              <h5 style={{color: 'var(--text-main)', marginBottom: '1rem'}}>2. 批量替换内容</h5>
+                              <h4 style={{color: 'var(--accent-pink)', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                <RefreshCw size={20} /> 2. 批量替换内容
+                              </h4>
 
                               {sopUrls.length > 0 && (
                                 <div className="input-group">
@@ -1569,7 +1568,9 @@ function App() {
                           </div>
 
                           {/* Retention details list/grid */}
-                          <h5 style={{color: 'var(--text-main)', marginBottom: '1.2rem'}}>企业客户流失率与留存百分比排行</h5>
+                          <h4 style={{color: 'var(--accent-cyan)', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                            <Users size={20} /> 企业客户流失率与留存百分比排行
+                          </h4>
                           <div className="retention-grid">
                             {([...retentionReports].sort((a, b) => b.retention_rate - a.retention_rate)).map((corp, index) => {
                               const churnRate = Math.max(0, 100 - corp.retention_rate).toFixed(2);
