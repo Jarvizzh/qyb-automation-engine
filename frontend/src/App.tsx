@@ -30,7 +30,7 @@ function App() {
   const [selectedMobile, setSelectedMobile] = useState('');
   
   const [previewTasks, setPreviewTasks] = useState<TaskPreview[]>([]);
-  const [concurrency, setConcurrency] = useState<number>(4);
+  const [concurrency, setConcurrency] = useState<number>(8);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [isTaskRunning, setIsTaskRunning] = useState(false);
@@ -801,7 +801,7 @@ function App() {
                     style={{width: '80px', padding: '0.4rem'}}
                     disabled={isTaskRunning}
                   >
-                    {[4, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}
+                    {[4, 8, 12].map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
               </div>

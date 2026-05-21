@@ -24,7 +24,7 @@ class TaskPreview(BaseModel):
 
 class TaskCreate(BaseModel):
     tasks: List[TaskPreview]
-    concurrency: int = 4
+    concurrency: int = 8
 
 class SecretVerifyRequest(BaseModel):
     secret_key: str

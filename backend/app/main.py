@@ -33,7 +33,7 @@ class TaskManager:
     def __init__(self):
         self.active_tasks: Dict[str, Dict] = {} # task_id -> {process, stop_event, log_queue}
 
-    def start_task(self, task_id: str, tasks_list: List[dict], session_id: str, uid: str, concurrency: int = 4):
+    def start_task(self, task_id: str, tasks_list: List[dict], session_id: str, uid: str, concurrency: int = 8):
         log_queue = multiprocessing.Queue()
         stop_event = multiprocessing.Event()
         
