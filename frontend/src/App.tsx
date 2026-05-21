@@ -1571,37 +1571,124 @@ function App() {
                           {/* Retention details list/grid */}
                           <h5 style={{color: 'var(--text-main)', marginBottom: '1.2rem'}}>企业客户流失率与留存百分比排行</h5>
                           <div className="retention-grid">
-                            {retentionReports.map((corp, index) => (
-                              <div key={index} className="retention-card">
-                                <div className="card-header">
-                                  <span className="corp-name">{corp.name}</span>
-                                  <span className="rate-value">{corp.retention_rate}% <span style={{fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-dim)'}}>留存率</span></span>
-                                </div>
-                                
-                                <div className="progress-bar-container" style={{height: '10px', marginBottom: '1.2rem'}}>
-                                  <div 
-                                    className="progress-bar-fill" 
-                                    style={{
-                                      width: `${corp.retention_rate}%`,
-                                      background: corp.retention_rate > 70 ? 'linear-gradient(90deg, #818cf8, #10b981)' : corp.retention_rate > 40 ? 'linear-gradient(90deg, #f59e0b, #eab308)' : 'linear-gradient(90deg, #ef4444, #f87171)'
-                                    }}
-                                  />
-                                </div>
+                            {([...retentionReports].sort((a, b) => b.retention_rate - a.retention_rate)).map((corp, index) => {
+                              const churnRate = Math.max(0, 100 - corp.retention_rate).toFixed(2);
+                              const isTopThree = index < 3;
+                              const rankMedal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`;
+                              
+                              return (
+                                <div key={index} className={`retention-card ${isTopThree ? 'top-rank' : ''}`} style={{
+                                  position: 'relative',
+                                  border: isTopThree 
+                                    ? index === 0 
+                                      ? '1px solid rgba(234, 179, 8, 0.4)' 
+                                      : index === 1 
+                                        ? '1px solid rgba(148, 163, 184, 0.4)' 
+                                        : '1px solid rgba(180, 83, 9, 0.4)' 
+                                    : '1px solid var(--border-glass)',
+                                  background: isTopThree
+                                    ? index === 0 
+                                      ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.05) 0%, rgba(255,255,255,0.02) 100%)'
+                                      : index === 1
+                                        ? 'linear-gradient(135deg, rgba(148, 163, 184, 0.05) 0%, rgba(255,255,255,0.02) 100%)'
+                                        : 'linear-gradient(135deg, rgba(180, 83, 9, 0.05) 0%, rgba(255,255,255,0.02) 100%)'
+                                    : 'rgba(255, 255, 255, 0.02)',
+                                  boxShadow: isTopThree 
+                                    ? index === 0 
+                                      ? '0 8px 32px 0 rgba(234, 179, 8, 0.08)'
+                                      : index === 1 
+                                        ? '0 8px 32px 0 rgba(148, 163, 184, 0.05)'
+                                        : '0 8px 32px 0 rgba(180, 83, 9, 0.05)'
+                                    : 'none'
+                                }}>
+                                  {isTopThree && (
+                                    <div style={{
+                                      position: 'absolute',
+                                      top: '-10px',
+                                      right: '12px',
+                                      padding: '0.2rem 0.6rem',
+                                      borderRadius: '20px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      background: index === 0 ? 'rgba(234, 179, 8, 0.2)' : index === 1 ? 'rgba(148, 163, 184, 0.2)' : 'rgba(180, 83, 9, 0.2)',
+                                      color: index === 0 ? '#facc15' : index === 1 ? '#cbd5e1' : '#fb923c',
+                                      border: `1px solid ${index === 0 ? 'rgba(234, 179, 8, 0.3)' : index === 1 ? 'rgba(148, 163, 184, 0.3)' : 'rgba(180, 83, 9, 0.3)'}`
+                                    }}>
+                                      RANK {index + 1}
+                                    </div>
+                                  )}
 
-                                <div className="metrics-row">
-                                  <span>正常客户数:</span>
-                                  <span style={{color: '#10b981', fontWeight: 600}}>{corp.normal.toLocaleString()} 人</span>
+                                  <div className="card-header" style={{alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1.2rem'}}>
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem'}}>
+                                      <span style={{
+                                        fontSize: '1.2rem', 
+                                        fontWeight: 700, 
+                                        display: 'inline-flex',
+                                        width: '32px',
+                                        height: '32px',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        borderRadius: '50%',
+                                        border: '1px solid rgba(255,255,255,0.08)'
+                                      }}>{rankMedal}</span>
+                                      <span className="corp-name" style={{
+                                        fontSize: '1.1rem',
+                                        fontWeight: 700,
+                                        color: 'white',
+                                        textShadow: '0 2px 4px rgba(0,0,0,0.5)'
+                                      }}>{corp.name}</span>
+                                    </div>
+                                  </div>
+
+                                  <div style={{marginBottom: '1.5rem'}}>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem'}}>
+                                      <span style={{color: 'var(--text-dim)'}}>留存百分比:</span>
+                                      <span style={{color: '#10b981', fontWeight: 700}}>{corp.retention_rate}%</span>
+                                    </div>
+                                    <div className="progress-bar-container" style={{height: '6px', marginBottom: '0.8rem'}}>
+                                      <div 
+                                        className="progress-bar-fill" 
+                                        style={{
+                                          width: `${corp.retention_rate}%`,
+                                          background: 'linear-gradient(90deg, #818cf8, #10b981)'
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem'}}>
+                                      <span style={{color: 'var(--text-dim)'}}>流失百分比:</span>
+                                      <span style={{color: '#ef4444', fontWeight: 700}}>{churnRate}%</span>
+                                    </div>
+                                    <div className="progress-bar-container" style={{height: '6px', background: 'rgba(255,255,255,0.05)'}}>
+                                      <div 
+                                        className="progress-bar-fill" 
+                                        style={{
+                                          width: `${churnRate}%`,
+                                          background: 'linear-gradient(90deg, #f87171, #ef4444)'
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', background: 'rgba(0,0,0,0.15)', padding: '0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)'}}>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.2rem'}}>
+                                      <span style={{fontSize: '0.75rem', color: 'var(--text-dim)'}}>正常客户数</span>
+                                      <span style={{color: '#10b981', fontSize: '1rem', fontWeight: 700}}>{corp.normal.toLocaleString()}</span>
+                                    </div>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.2rem'}}>
+                                      <span style={{fontSize: '0.75rem', color: 'var(--text-dim)'}}>流失客户数</span>
+                                      <span style={{color: '#ef4444', fontSize: '1rem', fontWeight: 700}}>{corp.lost.toLocaleString()}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="metrics-row" style={{borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.6rem', marginTop: '0.8rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between'}}>
+                                    <span style={{color: 'var(--text-dim)'}}>去重总好友数:</span>
+                                    <span style={{color: 'var(--accent-cyan)', fontWeight: 700}}>{corp.total.toLocaleString()} 人</span>
+                                  </div>
                                 </div>
-                                <div className="metrics-row">
-                                  <span>流失客户数:</span>
-                                  <span style={{color: '#ef4444', fontWeight: 600}}>{corp.lost.toLocaleString()} 人</span>
-                                </div>
-                                <div className="metrics-row" style={{borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.4rem', marginTop: '0.4rem'}}>
-                                  <span>去重总好友:</span>
-                                  <span style={{color: 'white', fontWeight: 600}}>{corp.total.toLocaleString()} 人</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </>
                       )}
