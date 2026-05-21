@@ -1275,7 +1275,7 @@ function App() {
                                     </td>
                                     <td>{new Date(task.created_at).toLocaleString('zh-CN')}</td>
                                     <td>
-                                      {task.status === 'running' && <span className="badge badge-cyan" style={{animation: 'pulse 2s infinite'}}>● 运行中</span>}
+                                      {task.status === 'running' && <span className="badge badge-cyan">● 运行中</span>}
                                       {task.status === 'completed' && <span className="badge badge-success">已完成</span>}
                                       {task.status === 'stopped' && <span className="badge badge-gray">已停止</span>}
                                       {task.status === 'failed' && <span className="badge badge-danger">失败</span>}
