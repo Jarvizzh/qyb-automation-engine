@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle, BarChart2, Search, Loader2 } from 'lucide-react';
+import { Upload, Play, Square, Download, UserCheck, Terminal, Trash2, Key, ShieldCheck, LogOut, Info, CheckCircle, AlertCircle, XCircle, BarChart2, Search, Loader2, BookOpen, Users, RefreshCw, Calendar } from 'lucide-react';
 import './App.css';
-import type { TaskPreview, UserSession, StatsItem } from './types';
+import type { TaskPreview, UserSession, StatsItem, GroupItem, GroupTaskItem, SopTemplateItem, SopUrlItem, RetentionReportItem } from './types';
+
 
 // 自动检测 API 地址：开发环境默认 8000 端口，生产环境使用相对路径（由 Nginx 代理）
 const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
@@ -22,7 +23,7 @@ function App() {
   const [secretKey, setSecretKey] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'auth' | 'task' | 'history' | 'stats'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'task' | 'ops'>('auth');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [sessions, setSessions] = useState<UserSession[]>([]);
@@ -45,9 +46,44 @@ function App() {
   const [tagName, setTagName] = useState('');
   const [statsResults, setStatsResults] = useState<StatsItem[]>([]);
   const [isStatsQuerying, setIsStatsQuerying] = useState(false);
+
+  // 智能运营中心 (Operations Center) 状态
+  const [opsSubTab, setOpsSubTab] = useState<'group-send' | 'sop' | 'reports' | 'stats'>('group-send');
+
+  // A: 群发任务分发状态
+  const [gsModule, setGsModule] = useState<number>(19); // 19: 新版极速群发, 7: 高级群发
+  const [gsGroups, setGsGroups] = useState<GroupItem[]>([]);
+  const [selectedGsGroupId, setSelectedGsGroupId] = useState<number | 'ALL' | ''>('');
+  const [gsTasks, setGsTasks] = useState<GroupTaskItem[]>([]);
+  const [selectedGsTaskId, setSelectedGsTaskId] = useState<number | 'ALL' | ''>('');
+  const [randomizeStyle, setRandomizeStyle] = useState('Default'); // 'Default' or 'Fantasy'
+  const [replaceSourceUrl, setReplaceSourceUrl] = useState('');
+  const [replaceNewUrl, setReplaceNewUrl] = useState('');
+  const [replaceStyle, setReplaceStyle] = useState('Original'); // 'Original', 'Default', 'Fantasy'
+  const [isGsLoading, setIsGsLoading] = useState(false);
+  const [isGsActionRunning, setIsGsActionRunning] = useState(false);
+
+  // C: SOP 内容治理状态
+  const [sopTemplates, setSopTemplates] = useState<SopTemplateItem[]>([]);
+  const [selectedSopTemplateId, setSelectedSopTemplateId] = useState<number | ''>('');
+  const [sopUrls, setSopUrls] = useState<SopUrlItem[]>([]);
+  const [sopCurUrl, setSopCurUrl] = useState('');
+  const [sopNewUrl, setSopNewUrl] = useState('');
+  const [sopTitle, setSopTitle] = useState('');
+  const [sopImage, setSopImage] = useState('');
+  const [sopDesc, setSopDesc] = useState('');
+  const [sopStyle, setSopStyle] = useState('Original');
+  const [isSopLoading, setIsSopLoading] = useState(false);
+  const [isSopActionRunning, setIsSopActionRunning] = useState(false);
+
+  // D: 留存分析大盘状态
+  const [retentionReports, setRetentionReports] = useState<RetentionReportItem[]>([]);
+  const [isReportsLoading, setIsReportsLoading] = useState(false);
   
   const consoleRef = useRef<HTMLDivElement>(null);
+  const liveConsoleRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
 
   const checkAuthStatus = async () => {
     try {
@@ -116,12 +152,37 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'history') {
+    if (activeTab === 'task') {
       fetchHistory();
-    } else if (activeTab === 'stats') {
-      fetchCorps();
+    } else if (activeTab === 'ops') {
+      if (selectedMobile) {
+        if (opsSubTab === 'group-send') {
+          fetchGsGroups();
+        } else if (opsSubTab === 'sop') {
+          fetchSopTemplates();
+        } else if (opsSubTab === 'reports') {
+          fetchRetentionReports();
+        } else if (opsSubTab === 'stats') {
+          fetchCorps();
+        }
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, opsSubTab]);
+
+  useEffect(() => {
+    if (activeTab === 'ops' && selectedMobile) {
+      if (opsSubTab === 'group-send') {
+        fetchGsGroups();
+      } else if (opsSubTab === 'sop') {
+        fetchSopTemplates();
+      } else if (opsSubTab === 'reports') {
+        fetchRetentionReports();
+      } else if (opsSubTab === 'stats') {
+        fetchCorps();
+      }
+    }
+  }, [selectedMobile]);
+
 
   const fetchCorps = async () => {
     if (!selectedMobile) return;
@@ -171,6 +232,239 @@ function App() {
     }
   };
 
+  // --- Operations Center API Functions ---
+
+  // A: Group-Send Governance Functions
+  const fetchGsGroups = async (moduleVal?: number) => {
+    const mod = moduleVal !== undefined ? moduleVal : gsModule;
+    if (!selectedMobile) return;
+    setIsGsLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/ops/group-send/groups?module=${mod}&mobile=${selectedMobile}`);
+      setGsGroups(res.data);
+      setSelectedGsGroupId('');
+      setGsTasks([]);
+      setSelectedGsTaskId('');
+    } catch (err: any) {
+      addToast("获取分组失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsGsLoading(false);
+    }
+  };
+
+  const fetchGsTasks = async (groupId: number) => {
+    if (!selectedMobile) return;
+    setIsGsLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/ops/group-send/tasks?module=${gsModule}&group_id=${groupId}&mobile=${selectedMobile}`);
+      setGsTasks(res.data);
+      setSelectedGsTaskId('');
+    } catch (err: any) {
+      addToast("获取任务列表失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsGsLoading(false);
+    }
+  };
+
+  const handleStartRandomize = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
+    if (!selectedGsTaskId) return addToast("请选择任务", "warning");
+
+    setIsGsActionRunning(true);
+    try {
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      const payload = {
+        task_type: 'title_randomize',
+        module: gsModule,
+        group_id: String(selectedGsGroupId),
+        task_id: String(selectedGsTaskId),
+        style: randomizeStyle
+      };
+
+      const res = await axios.post(`${API_BASE}/api/ops/group-send/start-task?mobile=${selectedMobile}`, payload);
+      if (res.data.status === 'success') {
+        const taskId = res.data.task_id;
+        setCurrentTaskId(taskId);
+        setIsTaskRunning(true);
+        setLogs([]);
+        connectWebSocket(taskId);
+        addToast("标题/封面自动随机更换任务已启动！", "success");
+        fetchHistory();
+      } else {
+        addToast("启动失败：" + JSON.stringify(res.data), "error");
+      }
+    } catch (err: any) {
+      addToast("启动失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsGsActionRunning(false);
+    }
+  };
+
+  const handleStartReplacement = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
+    if (!selectedGsTaskId) return addToast("请选择任务", "warning");
+    if (!replaceSourceUrl.trim()) return addToast("请填写待替换的源链接", "warning");
+    if (!replaceNewUrl.trim()) return addToast("请填写替换后的新链接", "warning");
+
+    setIsGsActionRunning(true);
+    try {
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      const payload = {
+        task_type: 'url_replacement',
+        module: gsModule,
+        group_id: String(selectedGsGroupId),
+        task_id: String(selectedGsTaskId),
+        style: replaceStyle,
+        cur_url: replaceSourceUrl.trim(),
+        new_url: replaceNewUrl.trim()
+      };
+
+      const res = await axios.post(`${API_BASE}/api/ops/group-send/start-task?mobile=${selectedMobile}`, payload);
+      if (res.data.status === 'success') {
+        const taskId = res.data.task_id;
+        setCurrentTaskId(taskId);
+        setIsTaskRunning(true);
+        setLogs([]);
+        connectWebSocket(taskId);
+        addToast("链接替换任务已启动！", "success");
+        fetchHistory();
+      } else {
+        addToast("启动失败：" + JSON.stringify(res.data), "error");
+      }
+    } catch (err: any) {
+      addToast("启动失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsGsActionRunning(false);
+    }
+  };
+
+  // C: SOP Template Governance Functions
+  const fetchSopTemplates = async () => {
+    if (!selectedMobile) return;
+    setIsSopLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/ops/sop/templates?mobile=${selectedMobile}`);
+      setSopTemplates(res.data);
+      setSelectedSopTemplateId('');
+      setSopUrls([]);
+      setSopCurUrl('');
+      setSopNewUrl('');
+    } catch (err: any) {
+      addToast("获取SOP模板失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsSopLoading(false);
+    }
+  };
+
+  const fetchSopUrls = async (tplId: number) => {
+    if (!selectedMobile) return;
+    setIsSopLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/ops/sop/template-urls?tpl_id=${tplId}&mobile=${selectedMobile}`);
+      setSopUrls(res.data);
+      if (res.data.length > 0) {
+        setSopCurUrl(res.data[0].url);
+      } else {
+        setSopCurUrl('');
+      }
+    } catch (err: any) {
+      addToast("获取SOP节点链接失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsSopLoading(false);
+    }
+  };
+
+  const handleSopUpdate = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedSopTemplateId) return addToast("请选择要治理的SOP模板", "warning");
+
+    setIsSopActionRunning(true);
+    try {
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      const payload = {
+        tpl_id: Number(selectedSopTemplateId),
+        cur_url: sopCurUrl || undefined,
+        new_url: sopNewUrl || undefined,
+        title: sopTitle || undefined,
+        image: sopImage || undefined,
+        desc: sopDesc || undefined,
+        auto_update: sopStyle !== 'Original',
+        style: sopStyle === 'Original' ? 'Default' : sopStyle
+      };
+
+      const res = await axios.post(`${API_BASE}/api/ops/sop/update?mobile=${selectedMobile}`, payload);
+      if (res.data.status === 'success') {
+        addToast(`SOP 模板治理成功！已应用更新及随机打散方案`, "success");
+        fetchSopUrls(Number(selectedSopTemplateId));
+        setSopNewUrl('');
+        setSopTitle('');
+        setSopImage('');
+        setSopDesc('');
+      } else {
+        addToast("治理失败：" + JSON.stringify(res.data), "error");
+      }
+    } catch (err: any) {
+      addToast("SOP治理失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsSopActionRunning(false);
+    }
+  };
+
+  // D: Customer Retention Report Functions
+  const fetchRetentionReports = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    setIsReportsLoading(true);
+    try {
+      const checkRes = await axios.get(`${API_BASE}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        setActiveTab('auth');
+        return;
+      }
+
+      const res = await axios.get(`${API_BASE}/api/ops/reports/retention?mobile=${selectedMobile}`);
+      setRetentionReports(res.data);
+      if (res.data.length === 0) {
+        addToast("暂无企业授权或未拉取到留存数据", "info");
+      } else {
+        addToast(`留存数据拉取完毕，共 ${res.data.length} 家企业`, "success");
+      }
+    } catch (err: any) {
+      addToast("获取留存分析失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsReportsLoading(false);
+    }
+  };
+
+
   const fetchHistory = async () => {
     try {
       const res = await axios.get(`${API_BASE}/api/tasks`);
@@ -208,7 +502,7 @@ function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `fission-log-${taskId}.txt`;
+      a.download = `automation-log-${taskId}.txt`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -226,6 +520,9 @@ function App() {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
+    if (liveConsoleRef.current) {
+      liveConsoleRef.current.scrollTop = liveConsoleRef.current.scrollHeight;
+    }
   }, [logs]);
 
   const fetchSessions = async () => {
@@ -233,7 +530,18 @@ function App() {
       const res = await axios.get(`${API_BASE}/api/auth/sessions`);
       setSessions(res.data);
       if (res.data.length > 0) {
-        setSelectedMobile(res.data[0].mobile);
+        setSelectedMobile(prev => {
+          if (prev && res.data.some((s: any) => s.mobile === prev)) {
+            return prev;
+          }
+          const savedMobile = localStorage.getItem('selectedMobile');
+          if (savedMobile && res.data.some((s: any) => s.mobile === savedMobile)) {
+            return savedMobile;
+          }
+          return res.data[0].mobile;
+        });
+      } else {
+        setSelectedMobile('');
       }
     } catch (err) {
       console.error("Fetch sessions failed", err);
@@ -310,18 +618,22 @@ function App() {
       setIsTaskRunning(true);
       setLogs([]);
       connectWebSocket(taskId);
-      addToast("裂变任务已启动", "success");
+      addToast("自动化任务已启动", "success");
     } catch (err: any) {
       addToast("启动失败: " + (err.response?.data?.detail || err.message), "error");
     }
   };
 
-  const stopTask = async () => {
-    if (!currentTaskId) return;
+  const stopTask = async (taskId?: any) => {
+    const resolvedId = (taskId && typeof taskId === 'string') ? taskId : currentTaskId;
+    if (!resolvedId) return;
     try {
-      await axios.post(`${API_BASE}/api/tasks/${currentTaskId}/stop`);
-      clearPersistence();
-      setIsTaskRunning(false);
+      await axios.post(`${API_BASE}/api/tasks/${resolvedId}/stop`);
+      if (resolvedId === currentTaskId) {
+        clearPersistence();
+        setIsTaskRunning(false);
+      }
+      fetchHistory();
       addToast("任务已强制停止", "info");
     } catch (err: any) {
       addToast("停止失败: " + (err.response?.data?.detail || err.message), "error");
@@ -353,7 +665,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fission-log-${currentTaskId}.txt`;
+    a.download = `automation-log-${currentTaskId}.txt`;
     a.click();
   };
 
@@ -376,7 +688,7 @@ function App() {
               <Key size={32} color="var(--accent-purple)" />
             </div>
             <h2 style={{marginBottom: '1rem'}}>系统授权验证</h2>
-            <p style={{color: 'var(--text-dim)', marginBottom: '2rem', fontSize: '0.9rem'}}>请输入系统密钥以解锁裂变引擎核心功能</p>
+            <p style={{color: 'var(--text-dim)', marginBottom: '2rem', fontSize: '0.9rem'}}>请输入系统密钥以解锁自动化引擎核心功能</p>
             
             <div className="input-group" style={{textAlign: 'left'}}>
               <input 
@@ -406,9 +718,9 @@ function App() {
       ) : (
         <>
           <header className="header">
-            <h1 className="title">FISSION ENGINE CORE</h1>
+            <h1 className="title">AUTOMATION ENGINE CORE</h1>
             <div className="status-group">
-              {isTaskRunning && <span className="status-badge status-running">● 裂变执行中</span>}
+              {isTaskRunning && <span className="status-badge status-running">● 自动化执行中</span>}
               <button 
                 className="btn btn-outline" 
                 style={{marginLeft: '1rem', padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444'}}
@@ -418,13 +730,13 @@ function App() {
               </button>
             </div>
           </header>
-
+          
           <div className="tab-bar">
             <div className={`tab ${activeTab === 'auth' ? 'active' : ''}`} onClick={() => setActiveTab('auth')}>ACCESS AUTH</div>
-            <div className={`tab ${activeTab === 'task' ? 'active' : ''}`} onClick={() => setActiveTab('task')}>WORK TERMINAL</div>
-            <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>TASK HISTORY</div>
-            <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>DATA STATS</div>
+            <div className={`tab ${activeTab === 'task' ? 'active' : ''}`} onClick={() => setActiveTab('task')}>FISSION CORE</div>
+            <div className={`tab ${activeTab === 'ops' ? 'active' : ''}`} onClick={() => setActiveTab('ops')}>OPERATIONS CENTER</div>
           </div>
+
 
           {activeTab === 'auth' ? (
             <div className="grid">
@@ -465,6 +777,7 @@ function App() {
         </div>
       ) : activeTab === 'task' ? (
         <>
+          {/* WORK TERMINAL Controls */}
           <div className="card">
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
               <div style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
@@ -495,7 +808,7 @@ function App() {
               <div style={{display: 'flex', gap: '1rem'}}>
                 {!isTaskRunning ? (
                   <button className="btn btn-primary" onClick={startTask}>
-                    <Play size={18} /> 开始裂变
+                    <Play size={18} /> 开始执行
                   </button>
                 ) : (
                   <button className="btn btn-danger" onClick={stopTask}>
@@ -556,64 +869,65 @@ function App() {
               {logs.length === 0 && <div style={{color: 'var(--text-dim)', opacity: 0.5}}>等待任务启动... [SYSTEM READY]</div>}
             </div>
           </div>
-        </>
-      ) : activeTab === 'history' ? (
-        <div className="card">
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
-            <h3>任务执行历史</h3>
-            <button className="btn btn-outline" onClick={fetchHistory} style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem'}}>
-               <Play size={14} /> 刷新列表
-            </button>
-          </div>
 
-          <div style={{maxHeight: '600px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
-            <table className="preview-table">
-              <thead>
-                <tr>
-                  <th>任务 ID</th>
-                  <th>状态</th>
-                  <th>创建时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyTasks.map(task => (
-                  <tr key={task.id}>
-                    <td style={{fontSize: '0.8rem', color: 'var(--accent-purple)'}}>{task.id}</td>
-                    <td>
-                      <span className={`status-badge ${task.status === 'completed' ? 'status-success' : task.status === 'running' ? 'status-running' : 'status-stopped'}`} 
-                        style={{border: '1px solid transparent'}}>
-                        {task.status === 'completed' ? '已完成' : task.status === 'running' ? '执行中' : '已停止'}
-                      </span>
-                    </td>
-                    <td style={{fontSize: '0.8rem'}}>
-                      {new Date(task.created_at + (task.created_at.includes('Z') ? '' : 'Z')).toLocaleString('zh-CN', { 
-                        timeZone: 'Asia/Shanghai',
-                        hour12: false 
-                      })}
-                    </td>
-                    <td>
-                      <div style={{display: 'flex', gap: '0.5rem'}}>
-                        <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => viewHistoryLogs(task.id)}>
-                          查看日志
-                        </button>
-                        <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => downloadHistoryLogs(task.id)}>
-                          下载日志
-                        </button>
-                        <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)'}} onClick={() => deleteHistoryTask(task.id)}>
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {historyTasks.length === 0 && (
+          {/* TASK HISTORY (Merged from history tab) */}
+          <div className="card">
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
+              <h3>任务执行历史</h3>
+              <button className="btn btn-outline" onClick={fetchHistory} style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem'}}>
+                 <Play size={14} /> 刷新列表
+              </button>
+            </div>
+
+            <div style={{maxHeight: '600px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
+              <table className="preview-table">
+                <thead>
                   <tr>
-                    <td colSpan={4} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-dim)'}}>暂无历史任务记录</td>
+                    <th>任务 ID</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {historyTasks.map(task => (
+                    <tr key={task.id}>
+                      <td style={{fontSize: '0.8rem', color: 'var(--accent-purple)'}}>{task.id}</td>
+                      <td>
+                        <span className={`status-badge ${task.status === 'completed' ? 'status-success' : task.status === 'running' ? 'status-running' : 'status-stopped'}`} 
+                          style={{border: '1px solid transparent'}}>
+                          {task.status === 'completed' ? '已完成' : task.status === 'running' ? '执行中' : '已停止'}
+                        </span>
+                      </td>
+                      <td style={{fontSize: '0.8rem'}}>
+                        {new Date(task.created_at + (task.created_at.includes('Z') ? '' : 'Z')).toLocaleString('zh-CN', { 
+                          timeZone: 'Asia/Shanghai',
+                          hour12: false 
+                        })}
+                      </td>
+                      <td>
+                        <div style={{display: 'flex', gap: '0.5rem'}}>
+                          <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => viewHistoryLogs(task.id)}>
+                            查看日志
+                          </button>
+                          <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => downloadHistoryLogs(task.id)}>
+                            下载日志
+                          </button>
+                          <button className="btn btn-outline" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)'}} onClick={() => deleteHistoryTask(task.id)}>
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {historyTasks.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-dim)'}}>暂无历史任务记录</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {showHistoryLogs && (
@@ -638,110 +952,826 @@ function App() {
               </div>
             </div>
           )}
-          </div>
-        ) : (
+        </>
+      ) : (
+          /* 智能运营中心 Operations Center UI Panel */
           <div className="grid" style={{gridTemplateColumns: '1fr'}}>
             <div className="card">
-              <div style={{display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1.5rem'}}>
-                <div className="input-group" style={{width: '280px', marginBottom: 0}}>
-                  <label>企业简称</label>
-                  <select value={selectedCorp} onChange={e => setSelectedCorp(e.target.value)}>
-                    <option value="">请选择企业</option>
-                    {corps.map(c => <option key={c} value={c}>{c}</option>)}
+              {/* Operations Center Sub-Tabs Navigation & Account Selector */}
+              <div style={{
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                flexWrap: 'wrap', 
+                gap: '1.5rem', 
+                borderBottom: '1px solid var(--border-glass)', 
+                paddingBottom: '1.5rem', 
+                marginBottom: '2rem'
+              }}>
+                <div className="sub-tab-bar" style={{marginBottom: 0}}>
+                  <div 
+                    className={`sub-tab ${opsSubTab === 'group-send' ? 'active' : ''}`} 
+                    onClick={() => setOpsSubTab('group-send')}
+                  >
+                    📣 群发任务分发
+                  </div>
+                  <div 
+                    className={`sub-tab ${opsSubTab === 'sop' ? 'active' : ''}`} 
+                    onClick={() => setOpsSubTab('sop')}
+                  >
+                    ⚙️ SOP内容治理
+                  </div>
+                  <div 
+                    className={`sub-tab ${opsSubTab === 'reports' ? 'active' : ''}`} 
+                    onClick={() => setOpsSubTab('reports')}
+                  >
+                    📊 留存分析大盘
+                  </div>
+                  <div 
+                    className={`sub-tab ${opsSubTab === 'stats' ? 'active' : ''}`} 
+                    onClick={() => setOpsSubTab('stats')}
+                  >
+                    🏷️ 标签用户统计
+                  </div>
+                </div>
+
+                <div style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
+                  <span style={{fontSize: '0.9rem', color: 'var(--text-dim)'}}>授权账号:</span>
+                  <select 
+                    value={selectedMobile} 
+                    onChange={e => setSelectedMobile(e.target.value)}
+                    style={{width: '260px', padding: '0.5rem 1rem'}}
+                  >
+                    <option value="">选择企微宝账号</option>
+                    {sessions.map(s => <option key={s.mobile} value={s.mobile}>企微宝ID: {s.uid}</option>)}
                   </select>
                 </div>
-                
-                <div className="input-group" style={{width: 'auto', marginBottom: 0}}>
-                  <label>标签类型</label>
-                  <div style={{display: 'flex', gap: '1.5rem', height: '42px', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: '0 1.5rem', borderRadius: '8px', border: '1px solid var(--border-glass)'}}>
-                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0}}>
-                      <input type="radio" checked={tagType === 'smart'} onChange={() => setTagType('smart')} /> 智能标签
-                    </label>
-                    <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0}}>
-                      <input type="radio" checked={tagType === 'enterprise'} onChange={() => setTagType('enterprise')} /> 企业标签
-                    </label>
-                  </div>
-                </div>
-
-                <div className="input-group" style={{flex: 1, minWidth: '200px', marginBottom: 0}}>
-                  <label>标签名称</label>
-                  <div style={{position: 'relative'}}>
-                    <input 
-                      type="text" 
-                      value={tagName} 
-                      onChange={e => setTagName(e.target.value)} 
-                      onKeyDown={e => e.key === 'Enter' && handleQueryStats()}
-                      placeholder="请输入完整的标签名字" 
-                    />
-                    <Search size={18} style={{position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.3}} />
-                  </div>
-                </div>
-
-                <button 
-                  className="btn btn-primary" 
-                  style={{height: '42px', padding: '0 2rem'}} 
-                  onClick={handleQueryStats}
-                  disabled={isStatsQuerying}
-                >
-                  {isStatsQuerying ? <><Loader2 className="animate-spin" size={18} style={{marginRight: '0.5rem'}} /> 查询中</> : <><BarChart2 size={18} style={{marginRight: '0.5rem'}} /> 开始统计</>}
-                </button>
               </div>
 
-              <div style={{marginTop: '2rem'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                  <h4 style={{color: 'var(--accent-purple)'}}>查询结果 {statsResults.length > 0 && `(${statsResults.length} 条)`}</h4>
-                  {statsResults.length > 0 && (
-                    <button className="btn btn-outline" style={{fontSize: '0.8rem', padding: '0.4rem 0.8rem'}} onClick={() => {
-                      const csv = ["员工名,标签名字,用户数", ...statsResults.map(r => `${r.employee_name},${r.tag_name},${r.user_count}`)].join('\n');
-                      const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `stats-${selectedCorp}-${tagName}.csv`;
-                      a.click();
-                    }}>
-                      <Download size={14} style={{marginRight: '0.4rem'}} /> 导出 CSV
-                    </button>
+              {/* Guard: If no account is selected, prompt selection */}
+              {!selectedMobile ? (
+                <div style={{textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)'}}>
+                  <ShieldCheck size={48} style={{opacity: 0.15, marginBottom: '1.5rem', color: 'var(--accent-cyan)', margin: '0 auto 1.5rem'}} />
+                  <p style={{fontSize: '1.1rem', color: 'white', fontWeight: 600}}>请先选择授权账号以开启智能运营功能</p>
+                  <p style={{fontSize: '0.9rem', opacity: 0.7, marginTop: '0.5rem'}}>
+                    您可以在右上角的下拉菜单中选择一个已激活授权的企微宝账户来拉取实时数据
+                  </p>
+                </div>
+              ) : (
+                /* Sub-panel Switch */
+                <>
+                  {opsSubTab === 'group-send' && (
+                    <div>
+                      {/* Controls Row */}
+                      <div className="card" style={{
+                        padding: '1.5rem',
+                        marginBottom: '2rem',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid var(--border-glass)',
+                        borderRadius: '16px'
+                      }}>
+                        <h4 style={{color: 'var(--accent-cyan)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                          <Users size={18} /> 目标群发任务筛选
+                        </h4>
+                        <div style={{
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+                          gap: '1.5rem', 
+                          alignItems: 'flex-end'
+                        }}>
+                          <div className="input-group" style={{marginBottom: 0}}>
+                            <label>群发模式</label>
+                            <select 
+                              value={gsModule} 
+                              onChange={e => {
+                                const val = Number(e.target.value);
+                                setGsModule(val);
+                                fetchGsGroups(val);
+                              }}
+                            >
+                              <option value={19}>极速群发模式 (新版)</option>
+                              <option value={7}>高级群发模式</option>
+                            </select>
+                          </div>
+
+                          <div className="input-group" style={{marginBottom: 0}}>
+                            <label>任务分组</label>
+                            <select 
+                              value={selectedGsGroupId} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val === 'ALL') {
+                                  setSelectedGsGroupId('ALL');
+                                  setSelectedGsTaskId('ALL');
+                                } else {
+                                  const numVal = val ? Number(val) : '';
+                                  setSelectedGsGroupId(numVal);
+                                  setSelectedGsTaskId('');
+                                  if (numVal) {
+                                    fetchGsTasks(numVal);
+                                  }
+                                }
+                              }}
+                            >
+                              <option value="">请选择分组</option>
+                              <option value="ALL">ALL (所有分组)</option>
+                              {gsGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            </select>
+                          </div>
+
+                          <div className="input-group" style={{marginBottom: 0}}>
+                            <label>目标任务</label>
+                            <select 
+                              value={selectedGsTaskId} 
+                              disabled={selectedGsGroupId === 'ALL'}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val === 'ALL') {
+                                  setSelectedGsTaskId('ALL');
+                                } else {
+                                  setSelectedGsTaskId(val ? Number(val) : '');
+                                }
+                              }}
+                            >
+                              {selectedGsGroupId === 'ALL' ? (
+                                <option value="ALL">ALL (所有分组下的所有任务)</option>
+                              ) : (
+                                <>
+                                  <option value="">请选择任务</option>
+                                  <option value="ALL">ALL (当前分组下的所有任务)</option>
+                                  {gsTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                </>
+                              )}
+                            </select>
+                          </div>
+
+                          <div style={{display: 'flex', gap: '0.5rem'}}>
+                            <button 
+                              className="btn btn-outline" 
+                              style={{height: '42px', width: '42px', padding: 0, minWidth: 'auto'}} 
+                              onClick={() => {
+                                fetchGsGroups();
+                                if (selectedGsGroupId && selectedGsGroupId !== 'ALL') {
+                                  fetchGsTasks(Number(selectedGsGroupId));
+                                }
+                              }}
+                              disabled={isGsLoading}
+                              title="刷新列表"
+                            >
+                              <RefreshCw className={isGsLoading ? "animate-spin" : ""} size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {isGsLoading && (
+                        <div style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                          <div className="loading-spinner" style={{margin: '0 auto 1rem'}}></div>
+                          <p>正在读取企微宝群发配置，请稍候...</p>
+                        </div>
+                      )}
+
+                      {!isGsLoading && (
+                        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem', marginBottom: '3rem'}}>
+                          {/* Card A: 任务标题/封面自动随机更换 */}
+                          <div className="card" style={{
+                            padding: '2rem',
+                            background: 'rgba(255,255,255,0.01)',
+                            border: '1px solid var(--border-glass)',
+                            borderRadius: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div>
+                              <h4 style={{color: 'var(--accent-purple)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                🎨 1. 任务标题/封面自动随机更换
+                              </h4>
+                              <p style={{fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '1.5rem', lineHeight: '1.5'}}>
+                                针对已筛选的目标群发任务，系统将利用智能防封打散算法自动且随机地更换任务标题与封面。选择 <strong>ALL</strong> 可一次性更新所有分组/任务。
+                              </p>
+
+                              <div className="input-group">
+                                <label>打散风格类型</label>
+                                <select 
+                                  value={randomizeStyle} 
+                                  onChange={e => setRandomizeStyle(e.target.value)}
+                                >
+                                  <option value="Default">都市爽文风格随机</option>
+                                  <option value="Fantasy">玄幻奇幻风格随机</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div style={{marginTop: '2rem'}}>
+                              <button 
+                                className="btn btn-primary" 
+                                style={{width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'}}
+                                onClick={handleStartRandomize}
+                                disabled={isGsActionRunning}
+                              >
+                                {isGsActionRunning ? (
+                                  <><Loader2 className="animate-spin" size={18} /> 正在启动异步任务...</>
+                                ) : (
+                                  <><Play size={18} /> 启动随机更换任务</>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Card B: 链接批量替换 */}
+                          <div className="card" style={{
+                            padding: '2rem',
+                            background: 'rgba(255,255,255,0.01)',
+                            border: '1px solid var(--border-glass)',
+                            borderRadius: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div>
+                              <h4 style={{color: 'var(--accent-cyan)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                🔗 2. 网页链接全局替换及防封打散
+                              </h4>
+                              <p style={{fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '1.5rem', lineHeight: '1.5'}}>
+                                全局扫描所选范围下的所有任务，将指定的源链接（URL）替换为新链接，并可同时对被替换任务的标题及封面进行风格重塑。
+                              </p>
+
+                              <div className="input-group">
+                                <label>待治理的源 URL (精确匹配)</label>
+                                <input 
+                                  type="text" 
+                                  value={replaceSourceUrl} 
+                                  onChange={e => setReplaceSourceUrl(e.target.value)} 
+                                  placeholder="请输入待替换的旧网页链接，例如: http://old.domain.com/abc"
+                                />
+                              </div>
+
+                              <div className="input-group">
+                                <label>替换后的新 URL (支持域名自动解析)</label>
+                                <input 
+                                  type="text" 
+                                  value={replaceNewUrl} 
+                                  onChange={e => setReplaceNewUrl(e.target.value)} 
+                                  placeholder="请输入替换后的新网页链接，例如: http://new.domain.com/xyz"
+                                />
+                              </div>
+
+                              <div className="input-group">
+                                <label>标题封面风格策略</label>
+                                <select 
+                                  value={replaceStyle} 
+                                  onChange={e => setReplaceStyle(e.target.value)}
+                                >
+                                  <option value="Original">保持原版标题与封面 (仅替换链接)</option>
+                                  <option value="Default">都市爽文风格随机更换</option>
+                                  <option value="Fantasy">玄幻奇幻风格随机更换</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div style={{marginTop: '2rem'}}>
+                              <button 
+                                className="btn btn-primary" 
+                                style={{width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'}}
+                                onClick={handleStartReplacement}
+                                disabled={isGsActionRunning}
+                              >
+                                {isGsActionRunning ? (
+                                  <><Loader2 className="animate-spin" size={18} /> 正在启动异步任务...</>
+                                ) : (
+                                  <><Play size={18} /> 启动批量替换任务</>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Asynchronous Operations Task History & Controls */}
+                      <div className="card" style={{marginTop: '2rem', padding: '2rem'}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
+                          <h3 style={{margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                            <Terminal size={20} style={{color: 'var(--accent-cyan)'}} />
+                            运营群发治理 - 历史任务列表
+                          </h3>
+                          <button className="btn btn-outline" onClick={fetchHistory} style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}}>
+                            <RefreshCw size={14} style={{marginRight: '0.4rem'}} /> 刷新记录
+                          </button>
+                        </div>
+
+                        <div style={{overflowX: 'auto'}}>
+                          <table className="preview-table">
+                            <thead>
+                              <tr>
+                                <th>任务标识</th>
+                                <th>治理类型</th>
+                                <th>启动时间</th>
+                                <th>运行状态</th>
+                                <th style={{textAlign: 'center'}}>管理操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {historyTasks.filter((t: any) => t.filename && t.filename.startsWith("运营群发治理")).map((task: any) => {
+                                const isTaskRunningNow = task.status === 'running';
+                                return (
+                                  <tr key={task.id}>
+                                    <td style={{fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-dim)'}}>{task.id.substring(0, 8)}...</td>
+                                    <td>
+                                      <span style={{fontWeight: 600, color: 'white'}}>{task.filename}</span>
+                                    </td>
+                                    <td>{new Date(task.created_at).toLocaleString('zh-CN')}</td>
+                                    <td>
+                                      {task.status === 'running' && <span className="badge badge-cyan" style={{animation: 'pulse 2s infinite'}}>● 运行中</span>}
+                                      {task.status === 'completed' && <span className="badge badge-success">已完成</span>}
+                                      {task.status === 'stopped' && <span className="badge badge-gray">已停止</span>}
+                                      {task.status === 'failed' && <span className="badge badge-danger">失败</span>}
+                                    </td>
+                                    <td style={{display: 'flex', gap: '0.5rem', justifyContent: 'center'}}>
+                                      <button 
+                                        className="btn btn-outline" 
+                                        style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}}
+                                        onClick={() => viewHistoryLogs(task.id)}
+                                      >
+                                        查看日志
+                                      </button>
+                                      <button 
+                                        className="btn btn-outline" 
+                                        style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: 'var(--border-glass)'}}
+                                        onClick={() => downloadHistoryLogs(task.id)}
+                                      >
+                                        导出日志
+                                      </button>
+                                      {isTaskRunningNow ? (
+                                        <button 
+                                          className="btn btn-danger" 
+                                          style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}}
+                                          onClick={() => stopTask(task.id)}
+                                        >
+                                          停止
+                                        </button>
+                                      ) : (
+                                        <button 
+                                          className="btn btn-outline" 
+                                          style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444'}}
+                                          onClick={() => deleteHistoryTask(task.id)}
+                                        >
+                                          删除
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {historyTasks.filter((t: any) => t.filename && t.filename.startsWith("运营群发治理")).length === 0 && (
+                                <tr>
+                                  <td colSpan={5} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-dim)'}}>
+                                    暂无运营群发治理任务记录，您可在上方配置参数并启动治理任务。
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                </div>
-                
-                <div style={{maxHeight: '500px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
-                  <table className="preview-table">
-                    <thead>
-                      <tr>
-                        <th>员工名</th>
-                        <th>标签名字</th>
-                        <th>用户数</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {statsResults.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.employee_name}</td>
-                          <td><span className="status-badge" style={{backgroundColor: 'rgba(168, 85, 247, 0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(168, 85, 247, 0.2)'}}>{item.tag_name}</span></td>
-                          <td style={{fontWeight: 600, color: 'var(--accent-cyan)'}}>{item.user_count}</td>
-                        </tr>
-                      ))}
-                      {statsResults.length === 0 && !isStatsQuerying && (
-                        <tr>
-                          <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
-                            <BarChart2 size={48} style={{opacity: 0.1, marginBottom: '1rem'}} />
-                            <p>暂无统计数据，请在上方输入条件后点击开始统计</p>
-                          </td>
-                        </tr>
+
+                  {/* sub-tab: C - SOP Content Governance */}
+                  {opsSubTab === 'sop' && (
+                    <div>
+                      <div className="input-group" style={{marginBottom: '2rem'}}>
+                        <label>选择 SOP 模板进行治理</label>
+                        <select 
+                          value={selectedSopTemplateId} 
+                          onChange={e => {
+                            const val = e.target.value ? Number(e.target.value) : '';
+                            setSelectedSopTemplateId(val);
+                            if (val) fetchSopUrls(val);
+                          }}
+                        >
+                          <option value="">-- 请选择 SOP 模板 --</option>
+                          {sopTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      </div>
+
+                      {isSopLoading && (
+                        <div style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                          <div className="loading-spinner" style={{margin: '0 auto 1rem'}}></div>
+                          <p>正在拉取 SOP 模板节点详情，请稍候...</p>
+                        </div>
                       )}
-                      {isStatsQuerying && (
-                        <tr>
-                          <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
-                            <div className="loading-spinner" style={{margin: '0 auto 1rem'}}></div>
-                            <p>正在拉取企微宝数据，请稍候...</p>
-                          </td>
-                        </tr>
+
+                      {!isSopLoading && selectedSopTemplateId && (
+                        <div style={{marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '2rem'}}>
+                          <h4 style={{color: 'var(--accent-purple)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                            <Calendar size={18} /> 模板每日 SOP 节点及链接分布
+                          </h4>
+
+                          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem'}}>
+                            {/* Left: Nodes Table */}
+                            <div>
+                              <h5 style={{color: 'var(--text-main)', marginBottom: '1rem'}}>1. 模板详情清单 ({sopUrls.length} 个节点)</h5>
+                              <div style={{maxHeight: '554px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
+                                <table className="preview-table">
+                                  <thead>
+                                    <tr>
+                                      <th style={{padding: '0.75rem'}}>时间节点</th>
+                                      <th style={{padding: '0.75rem'}}>附件类型</th>
+                                      <th style={{padding: '0.75rem'}}>原网页标题/URL</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {sopUrls.map((item, idx) => (
+                                      <tr key={idx}>
+                                        <td style={{padding: '0.75rem', fontWeight: 600}}>
+                                          <span className="badge badge-purple">第 {item.day} 天</span>
+                                        </td>
+                                        <td style={{padding: '0.75rem'}}>
+                                          <span className="badge badge-gray">{item.type}</span>
+                                        </td>
+                                        <td style={{padding: '0.75rem', maxWidth: '220px', wordBreak: 'break-all'}}>
+                                          <div style={{fontWeight: 600, color: 'white', marginBottom: '0.2rem'}}>{item.title || '（未命名附件）'}</div>
+                                          <div style={{fontSize: '0.75rem', color: 'var(--accent-cyan)'}}>{item.url}</div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {sopUrls.length === 0 && (
+                                      <tr>
+                                        <td colSpan={3} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-dim)'}}>
+                                          该模板内无任何带有网页或小程序的SOP节点
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            {/* Right: Governance Actions */}
+                            <div>
+                              <h5 style={{color: 'var(--text-main)', marginBottom: '1rem'}}>2. 批量替换内容</h5>
+
+                              {sopUrls.length > 0 && (
+                                <div className="input-group">
+                                  <label>待治理的源 URL</label>
+                                  <select 
+                                    value={sopCurUrl} 
+                                    onChange={e => setSopCurUrl(e.target.value)} 
+                                    style={{marginBottom: '0.75rem'}}
+                                  >
+                                    {Array.from(new Set(sopUrls.map(u => u.url))).map((url, i) => (
+                                      <option key={i} value={url}>{url}</option>
+                                    ))}
+                                  </select>
+                                  <input 
+                                    type="text" 
+                                    value={sopCurUrl} 
+                                    readOnly 
+                                    placeholder="暂未选择源 URL"
+                                    style={{backgroundColor: 'rgba(255, 255, 255, 0.02)', color: 'rgba(255, 255, 255, 0.4)', cursor: 'not-allowed', borderColor: 'rgba(255, 255, 255, 0.05)'}}
+                                  />
+                                </div>
+                              )}
+
+                              <div className="input-group">
+                                <label>替换后新 URL</label>
+                                <input 
+                                  type="text" 
+                                  value={sopNewUrl} 
+                                  onChange={e => setSopNewUrl(e.target.value)} 
+                                  placeholder="请输入新跳转的网页 URL (不填则仅批量更新属性)"
+                                />
+                              </div>
+
+                              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                                <div className="input-group">
+                                  <label>批量覆盖标题 (可选)</label>
+                                  <input 
+                                    type="text" 
+                                    value={sopTitle} 
+                                    onChange={e => setSopTitle(e.target.value)} 
+                                    placeholder="留空则不覆盖"
+                                  />
+                                </div>
+
+                                <div className="input-group">
+                                  <label>批量覆盖描述 (可选)</label>
+                                  <input 
+                                    type="text" 
+                                    value={sopDesc} 
+                                    onChange={e => setSopDesc(e.target.value)} 
+                                    placeholder="留空则不覆盖"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="input-group">
+                                <label>批量覆盖封面图 URL (可选)</label>
+                                <input 
+                                  type="text" 
+                                  value={sopImage} 
+                                  onChange={e => setSopImage(e.target.value)} 
+                                  placeholder="输入封面图 CDN 地址"
+                                />
+                              </div>
+
+                              <div className="input-group" style={{marginBottom: '1.5rem'}}>
+                                <label>标题风格</label>
+                                <select value={sopStyle} onChange={e => setSopStyle(e.target.value)}>
+                                  <option value="Original">原版标题（仅做链接治理）</option>
+                                  <option value="Default">都市风格随机</option>
+                                  <option value="Fantasy">玄幻风格随机</option>
+                                </select>
+                              </div>
+
+                              <button 
+                                className="btn btn-primary" 
+                                style={{width: '100%', padding: '1rem'}} 
+                                onClick={handleSopUpdate}
+                                disabled={isSopActionRunning || sopUrls.length === 0}
+                              >
+                                {isSopActionRunning ? (
+                                  <><Loader2 className="animate-spin" size={20} /> 正在执行治理算法...</>
+                                ) : (
+                                  <><RefreshCw size={20} /> 一键执行 SOP 内容深度治理</>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+
+                      {!isSopLoading && !selectedSopTemplateId && (
+                        <div style={{textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)', border: '1px dashed var(--border-glass)', borderRadius: '16px', marginTop: '2rem'}}>
+                          <BookOpen size={48} style={{opacity: 0.15, marginBottom: '1.5rem', color: 'var(--accent-cyan)', margin: '0 auto 1.5rem'}} />
+                          <p style={{fontSize: '1.1rem', color: 'white'}}>请选择 SOP 模板进行治理</p>
+                          <p style={{fontSize: '0.9rem', opacity: 0.7, marginTop: '0.5rem'}}>
+                            系统支持从列表中选择账号内全部 SOP 模板，可视化列出全部跳转网页，提供一键批量防封及链接替换。
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* sub-tab: D - Customer Retention Report */}
+                  {opsSubTab === 'reports' && (
+                    <div>
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
+                        <h4 style={{color: 'var(--accent-cyan)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                          <BarChart2 size={20} /> 全企业留存分析看板
+                        </h4>
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={fetchRetentionReports} 
+                          disabled={isReportsLoading}
+                        >
+                          {isReportsLoading ? (
+                            <><Loader2 className="animate-spin" size={16} /> 正在统计大盘...</>
+                          ) : (
+                            <><RefreshCw size={16} /> 刷新大盘留存分析</>
+                          )}
+                        </button>
+                      </div>
+
+                      {isReportsLoading && (
+                        <div style={{textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)'}}>
+                          <div className="loading-spinner" style={{margin: '0 auto 1.5rem'}}></div>
+                          <p style={{fontSize: '1.1rem', color: 'white'}}>正在实时扫描已授权企业客户库...</p>
+                          <p style={{fontSize: '0.9rem', opacity: 0.7, marginTop: '0.5rem'}}>
+                            系统正在分别拉取每家企业的：正常关系客户、已流失关系客户、以及去重总好友数...
+                          </p>
+                        </div>
+                      )}
+
+                      {!isReportsLoading && retentionReports.length > 0 && (
+                        <>
+                          {/* Stats mini card grid */}
+                          <div className="stats-card-grid">
+                            <div className="stats-mini-card">
+                              <h4>企业账户总数</h4>
+                              <div className="value" style={{color: 'var(--accent-purple)'}}>{retentionReports.length} <span style={{fontSize: '1rem', fontWeight: 500}}>家</span></div>
+                            </div>
+                            <div className="stats-mini-card">
+                              <h4>覆盖客户总量</h4>
+                              <div className="value" style={{color: 'var(--accent-cyan)'}}>
+                                {retentionReports.reduce((acc, curr) => acc + curr.total, 0).toLocaleString()} <span style={{fontSize: '1rem', fontWeight: 500}}>人</span>
+                              </div>
+                            </div>
+                            <div className="stats-mini-card">
+                              <h4>留存正常客户总量</h4>
+                              <div className="value" style={{color: '#10b981'}}>
+                                {retentionReports.reduce((acc, curr) => acc + curr.normal, 0).toLocaleString()} <span style={{fontSize: '1rem', fontWeight: 500}}>人</span>
+                              </div>
+                            </div>
+                            <div className="stats-mini-card">
+                              <h4>流失客户总量</h4>
+                              <div className="value" style={{color: '#ef4444'}}>
+                                {retentionReports.reduce((acc, curr) => acc + curr.lost, 0).toLocaleString()} <span style={{fontSize: '1rem', fontWeight: 500}}>人</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Retention details list/grid */}
+                          <h5 style={{color: 'var(--text-main)', marginBottom: '1.2rem'}}>企业客户流失率与留存百分比排行</h5>
+                          <div className="retention-grid">
+                            {retentionReports.map((corp, index) => (
+                              <div key={index} className="retention-card">
+                                <div className="card-header">
+                                  <span className="corp-name">{corp.name}</span>
+                                  <span className="rate-value">{corp.retention_rate}% <span style={{fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-dim)'}}>留存率</span></span>
+                                </div>
+                                
+                                <div className="progress-bar-container" style={{height: '10px', marginBottom: '1.2rem'}}>
+                                  <div 
+                                    className="progress-bar-fill" 
+                                    style={{
+                                      width: `${corp.retention_rate}%`,
+                                      background: corp.retention_rate > 70 ? 'linear-gradient(90deg, #818cf8, #10b981)' : corp.retention_rate > 40 ? 'linear-gradient(90deg, #f59e0b, #eab308)' : 'linear-gradient(90deg, #ef4444, #f87171)'
+                                    }}
+                                  />
+                                </div>
+
+                                <div className="metrics-row">
+                                  <span>正常客户数:</span>
+                                  <span style={{color: '#10b981', fontWeight: 600}}>{corp.normal.toLocaleString()} 人</span>
+                                </div>
+                                <div className="metrics-row">
+                                  <span>流失客户数:</span>
+                                  <span style={{color: '#ef4444', fontWeight: 600}}>{corp.lost.toLocaleString()} 人</span>
+                                </div>
+                                <div className="metrics-row" style={{borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.4rem', marginTop: '0.4rem'}}>
+                                  <span>去重总好友:</span>
+                                  <span style={{color: 'white', fontWeight: 600}}>{corp.total.toLocaleString()} 人</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {!isReportsLoading && retentionReports.length === 0 && (
+                        <div style={{textAlign: 'center', padding: '5rem 2rem', color: 'var(--text-dim)', border: '1px dashed var(--border-glass)', borderRadius: '16px'}}>
+                          <BarChart2 size={48} style={{opacity: 0.15, marginBottom: '1.5rem', color: 'var(--accent-cyan)', margin: '0 auto 1.5rem'}} />
+                          <p style={{fontSize: '1.1rem', color: 'white'}}>暂无大盘留存数据</p>
+                          <p style={{fontSize: '0.9rem', opacity: 0.7, marginTop: '0.5rem'}}>
+                            点击上方的“刷新大盘留存分析”按钮，系统将自动扫描拉取多企业并聚合分析生成留存看板。
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* sub-tab: E - Tag User Statistics */}
+                  {opsSubTab === 'stats' && (
+                    <div>
+                      {/* Controls Row */}
+                      <div className="card" style={{
+                        padding: '1.5rem',
+                        marginBottom: '2rem',
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid var(--border-glass)',
+                        borderRadius: '16px'
+                      }}>
+                        <h4 style={{color: 'var(--accent-cyan)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                          <BarChart2 size={18} /> 企业标签用户统计查询
+                        </h4>
+                        
+                        <div style={{
+                          display: 'flex',
+                          gap: '1.5rem',
+                          alignItems: 'flex-end',
+                          flexWrap: 'wrap'
+                        }}>
+                          <div className="input-group" style={{width: '280px', marginBottom: 0}}>
+                            <label>企业简称</label>
+                            <select value={selectedCorp} onChange={e => setSelectedCorp(e.target.value)}>
+                              <option value="">请选择企业</option>
+                              {corps.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          
+                          <div className="input-group" style={{width: 'auto', marginBottom: 0}}>
+                            <label>标签类型</label>
+                            <div style={{
+                              display: 'flex',
+                              gap: '1.5rem',
+                              height: '42px',
+                              alignItems: 'center',
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              padding: '0 1.5rem',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border-glass)'
+                            }}>
+                              <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0, fontSize: '0.9rem'}}>
+                                <input type="radio" checked={tagType === 'smart'} onChange={() => setTagType('smart')} /> 智能标签
+                              </label>
+                              <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: 0, fontSize: '0.9rem'}}>
+                                <input type="radio" checked={tagType === 'enterprise'} onChange={() => setTagType('enterprise')} /> 企业标签
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="input-group" style={{flex: 1, minWidth: '200px', marginBottom: 0}}>
+                            <label>标签名称</label>
+                            <div style={{position: 'relative'}}>
+                              <input 
+                                type="text" 
+                                value={tagName} 
+                                onChange={e => setTagName(e.target.value)} 
+                                onKeyDown={e => e.key === 'Enter' && handleQueryStats()}
+                                placeholder="请输入完整的标签名字" 
+                                style={{paddingRight: '2.5rem'}}
+                              />
+                              <Search size={18} style={{position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.3}} />
+                            </div>
+                          </div>
+
+                          <button 
+                            className="btn btn-primary" 
+                            style={{height: '42px', padding: '0 2rem'}} 
+                            onClick={handleQueryStats}
+                            disabled={isStatsQuerying}
+                          >
+                            {isStatsQuerying ? (
+                              <><Loader2 className="animate-spin" size={18} style={{marginRight: '0.5rem'}} /> 查询中...</>
+                            ) : (
+                              <><BarChart2 size={18} style={{marginRight: '0.5rem'}} /> 开始统计</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Results Card */}
+                      <div style={{marginTop: '2rem'}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                          <h4 style={{color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                            📊 查询结果 {statsResults.length > 0 && <span style={{fontSize: '0.9rem', color: 'var(--text-dim)'}}>({statsResults.length} 条记录)</span>}
+                          </h4>
+                          {statsResults.length > 0 && (
+                            <button className="btn btn-outline" style={{fontSize: '0.8rem', padding: '0.4rem 0.8rem'}} onClick={() => {
+                              const csv = ["员工名,标签名字,用户数", ...statsResults.map(r => `${r.employee_name},${r.tag_name},${r.user_count}`)].join('\n');
+                              const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `stats-${selectedCorp}-${tagName}.csv`;
+                              a.click();
+                            }}>
+                              <Download size={14} style={{marginRight: '0.4rem'}} /> 导出 CSV
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div style={{maxHeight: '500px', overflowY: 'auto', border: '1px solid var(--border-glass)', borderRadius: '12px'}}>
+                          <table className="preview-table">
+                            <thead>
+                              <tr>
+                                <th>员工名</th>
+                                <th>标签名字</th>
+                                <th>用户数</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {statsResults.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td>{item.employee_name}</td>
+                                  <td>
+                                    <span className="status-badge" style={{
+                                      backgroundColor: 'rgba(168, 85, 247, 0.1)', 
+                                      color: 'var(--accent-purple)', 
+                                      border: '1px solid rgba(168, 85, 247, 0.2)'
+                                    }}>
+                                      {item.tag_name}
+                                    </span>
+                                  </td>
+                                  <td style={{fontWeight: 600, color: 'var(--accent-cyan)'}}>{item.user_count}</td>
+                                </tr>
+                              ))}
+                              {statsResults.length === 0 && !isStatsQuerying && (
+                                <tr>
+                                  <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                                    <BarChart2 size={48} style={{opacity: 0.1, marginBottom: '1rem', margin: '0 auto 1rem'}} />
+                                    <p>暂无统计数据，请在上方输入条件后点击开始统计</p>
+                                  </td>
+                                </tr>
+                              )}
+                              {isStatsQuerying && (
+                                <tr>
+                                  <td colSpan={3} style={{textAlign: 'center', padding: '4rem', color: 'var(--text-dim)'}}>
+                                    <div className="loading-spinner" style={{margin: '0 auto 1rem'}}></div>
+                                    <p>正在拉取企微宝数据，请稍候...</p>
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}

@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from . import models, schemas, database
 from .core.qyb_client import login_qyb
 from .core.fission_engine import run_fission_task, get_wechat_accounts, get_stats_data
+from .core.miaokol_client_adapter import get_miaokol_client
 
-app = FastAPI(title="企微宝好友裂变平台")
+app = FastAPI(title="企微宝自动化引擎")
 
 # 跨域配置
 app.add_middleware(
@@ -39,6 +40,26 @@ class TaskManager:
         process = multiprocessing.Process(
             target=run_fission_task,
             args=(task_id, tasks_list, session_id, uid, log_queue, stop_event, concurrency)
+        )
+        process.start()
+        
+        self.active_tasks[task_id] = {
+            "process": process,
+            "stop_event": stop_event,
+            "log_queue": log_queue,
+            "logs": []
+        }
+        return process.pid
+
+    def start_ops_task(self, task_id: str, task_type: str, session_id: str, params: dict):
+        log_queue = multiprocessing.Queue()
+        stop_event = multiprocessing.Event()
+        
+        from .core.ops_engine import run_groupsend_ops_task
+        
+        process = multiprocessing.Process(
+            target=run_groupsend_ops_task,
+            args=(task_id, task_type, session_id, params, log_queue, stop_event)
         )
         process.start()
         
@@ -136,7 +157,51 @@ async def login(req: schemas.LoginRequest, db: Session = Depends(database.get_db
 @app.get("/api/auth/sessions")
 async def get_sessions(db: Session = Depends(database.get_db)):
     users = db.query(models.UserSession).all()
-    return users
+    if not users:
+        return []
+    
+    from .core.qyb_client import BASE_URL, HEADERS
+    import concurrent.futures
+
+    def check_user_session(mobile, session_id):
+        api_url = f"{BASE_URL}/api/user/authInfo"
+        try:
+            response = requests.get(api_url, cookies={'PHPSESSID': session_id}, headers=HEADERS, timeout=3)
+            if response.status_code == 200:
+                res_data = response.json()
+                if res_data.get('errcode') == 0:
+                    return mobile, True
+                else:
+                    return mobile, False
+            return mobile, None
+        except Exception:
+            return mobile, None
+
+    # 并发检测所有账号的授权状态
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(users), 10)) as executor:
+        future_to_user = {
+            executor.submit(check_user_session, u.mobile, u.session_id): u 
+            for u in users
+        }
+        for future in concurrent.futures.as_completed(future_to_user):
+            user = future_to_user[future]
+            try:
+                mobile, is_valid = future.result()
+                results[mobile] = is_valid
+            except Exception:
+                results[user.mobile] = None
+
+    # 在主线程中安全地将失效账号从数据库中移除
+    invalid_mobiles = [mobile for mobile, is_valid in results.items() if is_valid is False]
+    if invalid_mobiles:
+        print(f"🗑️ 检测到失效账号，正在从列表自动移除: {invalid_mobiles}")
+        db.query(models.UserSession).filter(models.UserSession.mobile.in_(invalid_mobiles)).delete(synchronize_session=False)
+        db.commit()
+
+    active_users = db.query(models.UserSession).all()
+    return active_users
+
 
 @app.get("/api/auth/check-session/{mobile}")
 async def check_session_validity(mobile: str, db: Session = Depends(database.get_db)):
@@ -347,4 +412,150 @@ async def websocket_logs(websocket: WebSocket, task_id: str, db: Session = Depen
         except:
             pass
 
-import asyncio
+# --- 智能运营中心 (Operations Center) ---
+
+@app.get("/api/ops/group-send/groups")
+async def ops_get_groups(module: int, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        groups = client.get_groups(module)
+        return groups
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ops/group-send/tasks")
+async def ops_get_tasks(module: int, group_id: int, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        tasks = client.get_tasks_in_group(module, group_id)
+        return tasks
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ops/group-send/task-contents")
+async def ops_get_task_contents(module: int, task_id: int, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        contents = client.get_task_contents(module, task_id)
+        return contents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ops/group-send/start-task")
+async def ops_start_groupsend_task(req: schemas.GroupSendOpsTaskStartRequest, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+        
+    task_id = str(uuid.uuid4())
+    
+    # 构造描述性的 filename 以便在前端展示
+    task_type_str = "标题/封面随机更换" if req.task_type == "title_randomize" else "链接替换"
+    filename = f"运营群发治理-{task_type_str}"
+    
+    # 启动后台任务
+    params = req.dict()
+    task_manager.start_ops_task(task_id, req.task_type, user.session_id, params)
+    
+    # 创建数据库记录
+    new_task = models.TaskRecord(
+        id=task_id,
+        filename=filename,
+        status="running",
+        log_path=f"tasks/logs/{task_id}.log",
+        concurrency=1
+    )
+    db.add(new_task)
+    db.commit()
+    
+    return {"status": "success", "task_id": task_id}
+
+@app.get("/api/ops/sop/templates")
+async def ops_list_sop_templates(mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        res = client.fetch_api(client.ENDPOINTS["SOP_TPL_LIST"]("", 0))
+        return res.get("data", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ops/sop/template-urls")
+async def ops_get_sop_urls(tpl_id: int, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        urls = client.get_sop_template_urls(tpl_id, 0)
+        return urls
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ops/sop/update")
+async def ops_update_sop(req: schemas.SopTemplateUpdateRequest, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        res = client.update_sop_template(
+            tpl_id=req.tpl_id,
+            is_personal=0,
+            cur_url=req.cur_url,
+            new_url=req.new_url,
+            title=req.title,
+            image=req.image,
+            desc=req.desc,
+            auto_update=req.auto_update,
+            style=req.style
+        )
+        return {"status": "success", "data": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ops/reports/retention")
+async def ops_get_retention_report(mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    try:
+        client = get_miaokol_client(user.session_id)
+        corps = client.get_corps()
+        report = []
+        for corp in corps:
+            corp_name = corp.get('short_name') or corp.get('name')
+            try:
+                total_res = client.search_customers(corp_name=corp_name, page_size=1)
+                total_cnt = total_res.get('distinct_contact_cnt', 0)
+                
+                normal_res = client.search_customers(corp_name=corp_name, relationship="正常好友", page_size=1)
+                normal_cnt = normal_res.get('distinct_contact_cnt', 0)
+                
+                lost_res = client.search_customers(corp_name=corp_name, relationship="流失好友", page_size=1)
+                lost_cnt = lost_res.get('distinct_contact_cnt', 0)
+                
+                rate = round((normal_cnt / total_cnt) * 100, 2) if total_cnt > 0 else 0
+                report.append({
+                    "name": corp_name,
+                    "total": total_cnt,
+                    "normal": normal_cnt,
+                    "lost": lost_cnt,
+                    "retention_rate": rate
+                })
+            except Exception as inner_e:
+                print(f"Error querying retention stats for corp '{corp_name}': {inner_e}")
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
