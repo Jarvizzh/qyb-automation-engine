@@ -51,7 +51,7 @@ function App() {
   const [opsSubTab, setOpsSubTab] = useState<'group-send' | 'sop' | 'reports' | 'stats'>('group-send');
 
   // A: 群发任务分发状态
-  const [gsModule, setGsModule] = useState<number>(19); // 19: 新版极速群发, 7: 高级群发
+  const [gsModule, setGsModule] = useState<number>(19); // 19: 极速群发, 7: 高级群发
   const [gsGroups, setGsGroups] = useState<GroupItem[]>([]);
   const [selectedGsGroupId, setSelectedGsGroupId] = useState<number | 'ALL' | ''>('');
   const [gsTasks, setGsTasks] = useState<GroupTaskItem[]>([]);
@@ -1045,8 +1045,8 @@ function App() {
                                 fetchGsGroups(val);
                               }}
                             >
-                              <option value={19}>极速群发模式 (新版)</option>
-                              <option value={7}>高级群发模式</option>
+                              <option value={19}>极速群发</option>
+                              <option value={7}>高级群发</option>
                             </select>
                           </div>
 
@@ -1144,17 +1144,17 @@ function App() {
                                 🎨 1. 任务标题/封面自动随机更换
                               </h4>
                               <p style={{fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '1.5rem', lineHeight: '1.5'}}>
-                                针对已筛选的目标群发任务，系统将利用智能防封打散算法自动且随机地更换任务标题与封面。选择 <strong>ALL</strong> 可一次性更新所有分组/任务。
+                                针对已筛选的目标群发任务，系统将自动且随机地更换任务标题与封面。<br/>选择 <strong>ALL</strong> 可一次性更新所有分组/任务。
                               </p>
 
                               <div className="input-group">
-                                <label>打散风格类型</label>
+                                <label>风格类型</label>
                                 <select 
                                   value={randomizeStyle} 
                                   onChange={e => setRandomizeStyle(e.target.value)}
                                 >
-                                  <option value="Default">都市爽文风格随机</option>
-                                  <option value="Fantasy">玄幻奇幻风格随机</option>
+                                  <option value="Default">都市风格随机</option>
+                                  <option value="Fantasy">玄幻风格随机</option>
                                 </select>
                               </div>
                             </div>
@@ -1187,29 +1187,26 @@ function App() {
                           }}>
                             <div>
                               <h4 style={{color: 'var(--accent-cyan)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                                🔗 2. 网页链接全局替换及防封打散
+                                🔗 2. 附件链接全局替换
                               </h4>
-                              <p style={{fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '1.5rem', lineHeight: '1.5'}}>
-                                全局扫描所选范围下的所有任务，将指定的源链接（URL）替换为新链接，并可同时对被替换任务的标题及封面进行风格重塑。
-                              </p>
 
                               <div className="input-group">
-                                <label>待治理的源 URL (精确匹配)</label>
+                                <label>待替换的源 URL</label>
                                 <input 
                                   type="text" 
                                   value={replaceSourceUrl} 
                                   onChange={e => setReplaceSourceUrl(e.target.value)} 
-                                  placeholder="请输入待替换的旧网页链接，例如: http://old.domain.com/abc"
+                                  placeholder="请输入待替换的旧链接，例如: http://old.domain.com/abc"
                                 />
                               </div>
 
                               <div className="input-group">
-                                <label>替换后的新 URL (支持域名自动解析)</label>
+                                <label>替换后的新 URL</label>
                                 <input 
                                   type="text" 
                                   value={replaceNewUrl} 
                                   onChange={e => setReplaceNewUrl(e.target.value)} 
-                                  placeholder="请输入替换后的新网页链接，例如: http://new.domain.com/xyz"
+                                  placeholder="请输入替换后的新链接，例如: http://new.domain.com/xyz"
                                 />
                               </div>
 
@@ -1219,9 +1216,9 @@ function App() {
                                   value={replaceStyle} 
                                   onChange={e => setReplaceStyle(e.target.value)}
                                 >
-                                  <option value="Original">保持原版标题与封面 (仅替换链接)</option>
-                                  <option value="Default">都市爽文风格随机更换</option>
-                                  <option value="Fantasy">玄幻奇幻风格随机更换</option>
+                                  <option value="Original">保持原版标题与封面</option>
+                                  <option value="Default">都市风格随机</option>
+                                  <option value="Fantasy">玄幻风格随机</option>
                                 </select>
                               </div>
                             </div>
