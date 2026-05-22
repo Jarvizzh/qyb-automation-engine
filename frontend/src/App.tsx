@@ -886,7 +886,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {historyTasks.map(task => (
+                  {historyTasks.filter((t: any) => !t.filename || !t.filename.startsWith("运营群发治理")).map(task => (
                     <tr key={task.id}>
                       <td style={{fontSize: '0.8rem', color: 'var(--accent-purple)'}}>{task.id}</td>
                       <td>
@@ -916,7 +916,7 @@ function App() {
                       </td>
                     </tr>
                   ))}
-                  {historyTasks.length === 0 && (
+                  {historyTasks.filter((t: any) => !t.filename || !t.filename.startsWith("运营群发治理")).length === 0 && (
                     <tr>
                       <td colSpan={4} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-dim)'}}>暂无历史任务记录</td>
                     </tr>
@@ -926,28 +926,6 @@ function App() {
             </div>
           </div>
 
-          {showHistoryLogs && (
-            <div style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-              backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-              backdropFilter: 'blur(8px)'
-            }}>
-              <div className="card" style={{width: '90%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
-                  <h3>历史日志回溯</h3>
-                  <button className="btn btn-outline" onClick={() => setShowHistoryLogs(false)}>关闭</button>
-                </div>
-                <div className="console" style={{flex: 1, height: 'auto', overflowY: 'auto'}}>
-                  {historyLogs.map((log, i) => {
-                    let logClass = "log-info";
-                    if (log.includes("❌") || log.includes("🛑") || log.includes("错误")) logClass = "log-error";
-                    else if (log.includes("✅") || log.includes("执行完毕")) logClass = "log-success";
-                    return <div key={i} className={logClass}>{log}</div>;
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
         </>
       ) : (
           /* 智能运营中心 Operations Center UI Panel */
@@ -1857,6 +1835,29 @@ function App() {
           </div>
         )}
       </>
+    )}
+
+    {showHistoryLogs && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+        backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        backdropFilter: 'blur(8px)'
+      }}>
+        <div className="card" style={{width: '90%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column'}}>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
+            <h3>历史日志回溯</h3>
+            <button className="btn btn-outline" onClick={() => setShowHistoryLogs(false)}>关闭</button>
+          </div>
+          <div className="console" style={{flex: 1, height: 'auto', overflowY: 'auto'}}>
+            {historyLogs.map((log, i) => {
+              let logClass = "log-info";
+              if (log.includes("❌") || log.includes("🛑") || log.includes("错误")) logClass = "log-error";
+              else if (log.includes("✅") || log.includes("执行完毕")) logClass = "log-success";
+              return <div key={i} className={logClass}>{log}</div>;
+            })}
+          </div>
+        </div>
+      </div>
     )}
   </div>
 
