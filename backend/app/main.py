@@ -561,7 +561,7 @@ async def ops_get_retention_report(mobile: str, db: Session = Depends(database.g
 
         report = []
         if corps:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(corps), 15)) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(corps), 8)) as executor:
                 futures = [executor.submit(fetch_corp_retention, corp) for corp in corps]
                 for future in concurrent.futures.as_completed(futures):
                     result = future.result()
