@@ -30,6 +30,24 @@ app.add_middleware(
 # 自动创建数据库表
 models.Base.metadata.create_all(bind=database.engine)
 
+@app.on_event("startup")
+def startup_event():
+    # 动态迁移：检查 user_sessions 中是否有 password 字段
+    try:
+        from sqlalchemy import text
+        with database.engine.connect() as conn:
+            res = conn.execute(text("PRAGMA table_info(user_sessions);")).fetchall()
+            cols = [r[1] for r in res]
+            if "password" not in cols:
+                conn.execute(text("ALTER TABLE user_sessions ADD COLUMN password VARCHAR;"))
+                conn.commit()
+                print("⏰ [Database Migration] Successfully added 'password' column to 'user_sessions' table.")
+    except Exception as migration_err:
+        print(f"⏰ [Database Migration Warning] {migration_err}")
+
+    from .core.scheduler import start_scheduler
+    start_scheduler()
+
 # 任务管理
 class TaskManager:
     def __init__(self):
@@ -139,7 +157,7 @@ async def check_auth_status(db: Session = Depends(database.get_db)):
         return {"is_verified": False}
     
     # 检查是否过期 (3天)
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now()
     if config.updated_at and (now - config.updated_at).days >= 3:
         # 已过期，删除密钥
         db.delete(config)
@@ -192,8 +210,9 @@ async def login(req: schemas.LoginRequest, db: Session = Depends(database.get_db
         if user:
             user.session_id = session_id
             user.uid = uid
+            user.password = req.password
         else:
-            user = models.UserSession(mobile=req.mobile, session_id=session_id, uid=uid)
+            user = models.UserSession(mobile=req.mobile, session_id=session_id, uid=uid, password=req.password)
             db.add(user)
         db.commit()
         return {"status": "success", "session_id": session_id, "uid": uid}
@@ -610,3 +629,133 @@ async def ops_get_retention_report(mobile: str, db: Session = Depends(database.g
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- 定时运营任务管理 (Scheduled Operations Governance) ---
+
+@app.post("/api/ops/group-send/schedule-task")
+async def ops_schedule_groupsend_task(req: schemas.ScheduledTaskCreate, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+    
+    task_id = str(uuid.uuid4())
+    
+    params = {}
+    if req.task_type == "url_replacement":
+        params["cur_url"] = req.cur_url
+        params["new_url"] = req.new_url
+    
+    # Calculate next execution time in local time
+    from .core.scheduler import calculate_next_run
+    
+    initial_next_run = None
+    if req.schedule_type == "once":
+        if req.timestamp:
+            initial_next_run = datetime.datetime.fromtimestamp(req.timestamp)
+        else:
+            initial_next_run = datetime.datetime.now()
+    else:
+        initial_next_run = calculate_next_run(req.recurrence, req.run_time, req.interval_value, req.interval_unit)
+        
+    new_sched = models.ScheduledTask(
+        id=task_id,
+        mobile=mobile,
+        task_type=req.task_type,
+        module=req.module,
+        group_id=req.group_id,
+        task_id=req.task_id,
+        style=req.style,
+        params=params,
+        schedule_type=req.schedule_type,
+        recurrence=req.recurrence,
+        run_time=req.run_time,
+        interval_value=req.interval_value,
+        interval_unit=req.interval_unit,
+        next_run_at=initial_next_run,
+        status="active"
+    )
+    
+    db.add(new_sched)
+    db.commit()
+    return {"status": "success", "task_id": task_id}
+
+@app.get("/api/ops/group-send/scheduled-tasks", response_model=List[schemas.ScheduledTaskResponse])
+async def ops_get_scheduled_tasks(mobile: str, db: Session = Depends(database.get_db)):
+    tasks = db.query(models.ScheduledTask).filter(models.ScheduledTask.mobile == mobile).order_by(models.ScheduledTask.created_at.desc()).all()
+    return tasks
+
+@app.post("/api/ops/group-send/scheduled-tasks/{task_id}/toggle")
+async def ops_toggle_scheduled_task(task_id: str, db: Session = Depends(database.get_db)):
+    task = db.query(models.ScheduledTask).filter(models.ScheduledTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="定时任务不存在")
+    
+    if task.status == "active":
+        task.status = "paused"
+        task.next_run_at = None
+    else:
+        task.status = "active"
+        from .core.scheduler import calculate_next_run
+        if task.schedule_type == "once":
+            task.next_run_at = datetime.datetime.now()
+        else:
+            task.next_run_at = calculate_next_run(task.recurrence, task.run_time, task.interval_value, task.interval_unit)
+            
+    db.commit()
+    return {"status": "success", "new_status": task.status}
+
+@app.post("/api/ops/group-send/scheduled-tasks/{task_id}/trigger")
+async def ops_trigger_scheduled_task_now(task_id: str, db: Session = Depends(database.get_db)):
+    task = db.query(models.ScheduledTask).filter(models.ScheduledTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="定时任务不存在")
+    
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == task.mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+        
+    execution_task_id = str(uuid.uuid4())
+    task_type_str = "标题/封面随机更换" if task.task_type == "title_randomize" else "链接替换"
+    filename = f"⏰手动定时运营-{task_type_str}"
+    
+    new_task_rec = models.TaskRecord(
+        id=execution_task_id,
+        filename=filename,
+        status="running",
+        log_path=f"tasks/logs/{execution_task_id}.log",
+        concurrency=1
+    )
+    db.add(new_task_rec)
+    db.commit()
+    
+    params = {
+        "module": task.module,
+        "group_id": task.group_id,
+        "task_id": task.task_id,
+        "style": task.style,
+        **(task.params or {})
+    }
+    
+    task_manager.start_ops_task(
+        task_id=execution_task_id,
+        task_type=task.task_type,
+        session_id=user.session_id,
+        params=params
+    )
+    
+    task.last_run_at = datetime.datetime.now()
+    db.commit()
+    
+    return {"status": "success", "task_id": execution_task_id}
+
+@app.delete("/api/ops/group-send/scheduled-tasks/{task_id}")
+async def ops_delete_scheduled_task(task_id: str, db: Session = Depends(database.get_db)):
+    task = db.query(models.ScheduledTask).filter(models.ScheduledTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="定时任务不存在")
+    
+    db.delete(task)
+    db.commit()
+    return {"status": "success"}
+

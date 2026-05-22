@@ -36,6 +36,10 @@ export const useOpsCenter = () => {
   const [isGsLoading, setIsGsLoading] = useState(false);
   const [isGsActionRunning, setIsGsActionRunning] = useState(false);
 
+  // Scheduled Tasks Governance States
+  const [scheduledTasks, setScheduledTasks] = useState<any[]>([]);
+  const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
+
   // C: SOP Template Governance States
   const [sopTemplates, setSopTemplates] = useState<SopTemplateItem[]>([]);
   const [selectedSopTemplateId, setSelectedSopTemplateId] = useState<number | ''>('');
@@ -280,6 +284,105 @@ export const useOpsCenter = () => {
     }
   };
 
+  const fetchScheduledTasks = useCallback(async () => {
+    if (!selectedMobile) return;
+    setIsSchedulesLoading(true);
+    try {
+      const res = await axios.get(`${apiBase}/api/ops/group-send/scheduled-tasks?mobile=${selectedMobile}`);
+      setScheduledTasks(res.data);
+    } catch (err: any) {
+      console.error("Fetch scheduled tasks failed", err);
+    } finally {
+      setIsSchedulesLoading(false);
+    }
+  }, [selectedMobile, apiBase]);
+
+  const handleCreateScheduleTask = async (taskType: 'title_randomize' | 'url_replacement', scheduleConfig: any) => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
+    if (!selectedGsTaskId) return addToast("请选择任务", "warning");
+
+    try {
+      const checkRes = await axios.get(`${apiBase}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        return;
+      }
+
+      const payload = {
+        task_type: taskType,
+        module: gsModule,
+        group_id: String(selectedGsGroupId),
+        task_id: String(selectedGsTaskId),
+        style: taskType === 'title_randomize' ? randomizeStyle : replaceStyle,
+        cur_url: taskType === 'url_replacement' ? replaceSourceUrl.trim() : undefined,
+        new_url: taskType === 'url_replacement' ? replaceNewUrl.trim() : undefined,
+        ...scheduleConfig
+      };
+
+      const res = await axios.post(`${apiBase}/api/ops/group-send/schedule-task?mobile=${selectedMobile}`, payload);
+      if (res.data.status === 'success') {
+        addToast("定时任务创建成功！", "success");
+        fetchScheduledTasks();
+      } else {
+        addToast("创建定时任务失败", "error");
+      }
+    } catch (err: any) {
+      addToast("创建失败: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
+  const handleToggleScheduleTask = async (taskId: string) => {
+    try {
+      const res = await axios.post(`${apiBase}/api/ops/group-send/scheduled-tasks/${taskId}/toggle`);
+      if (res.data.status === 'success') {
+        addToast(res.data.new_status === 'active' ? "任务已恢复运行" : "任务已暂停运行", "info");
+        fetchScheduledTasks();
+      }
+    } catch (err: any) {
+      addToast("操作失败", "error");
+    }
+  };
+
+  const handleTriggerScheduleTaskNow = async (taskId: string) => {
+    try {
+      const res = await axios.post(`${apiBase}/api/ops/group-send/scheduled-tasks/${taskId}/trigger`);
+      if (res.data.status === 'success') {
+        addToast("已手动触发执行该定时任务！", "success");
+        fetchHistory();
+      }
+    } catch (err: any) {
+      addToast("触发失败", "error");
+    }
+  };
+
+  const handleDeleteScheduleTask = async (taskId: string) => {
+    if (!await confirm({
+      title: '删除定时任务',
+      message: '确定要删除这条定时运营任务吗？删除后将不再自动触发执行。',
+      confirmText: '确定删除',
+      cancelText: '取消',
+      type: 'danger'
+    })) return;
+    try {
+      await axios.delete(`${apiBase}/api/ops/group-send/scheduled-tasks/${taskId}`);
+      fetchScheduledTasks();
+      addToast("定时任务已删除", "success");
+    } catch (err: any) {
+      addToast("删除失败", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (selectedMobile) {
+      fetchScheduledTasks();
+    } else {
+      setScheduledTasks([]);
+    }
+  }, [selectedMobile, fetchScheduledTasks]);
+
   // SOP Functions
   const fetchSopTemplates = async () => {
     if (!selectedMobile) return;
@@ -449,6 +552,15 @@ export const useOpsCenter = () => {
     fetchGsTasks,
     handleStartRandomize,
     handleStartReplacement,
+
+    // Scheduled Tasks
+    scheduledTasks,
+    isSchedulesLoading,
+    fetchScheduledTasks,
+    handleCreateScheduleTask,
+    handleToggleScheduleTask,
+    handleTriggerScheduleTaskNow,
+    handleDeleteScheduleTask,
 
     // SOP
     sopTemplates,

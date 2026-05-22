@@ -12,6 +12,10 @@ backend/venv/
 
 # Database
 backend/sql_app.db
+sql_app.db
+
+# Scratch and Tests
+backend/scratch/
 
 # OS
 .DS_Store

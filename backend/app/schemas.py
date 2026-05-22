@@ -80,4 +80,43 @@ class GroupSendOpsTaskStartRequest(BaseModel):
     cur_url: Optional[str] = None
     new_url: Optional[str] = None
 
+class ScheduledTaskCreate(BaseModel):
+    task_type: str  # 'title_randomize' or 'url_replacement'
+    module: int
+    group_id: str
+    task_id: str
+    style: str
+    cur_url: Optional[str] = None
+    new_url: Optional[str] = None
+    
+    schedule_type: str  # 'once' or 'recurring'
+    recurrence: str  # 'once', 'daily', 'interval'
+    run_time: Optional[str] = None  # '15:30' for daily
+    timestamp: Optional[int] = None  # UNIX timestamp for once
+    interval_value: Optional[int] = None
+    interval_unit: Optional[str] = None  # 'minutes', 'hours', 'days'
+
+class ScheduledTaskResponse(BaseModel):
+    id: str
+    mobile: str
+    task_type: str
+    module: int
+    group_id: str
+    task_id: str
+    style: str
+    params: Optional[dict] = None
+    schedule_type: str
+    recurrence: str
+    run_time: Optional[str] = None
+    interval_value: Optional[int] = None
+    interval_unit: Optional[str] = None
+    next_run_at: Optional[datetime] = None
+    last_run_at: Optional[datetime] = None
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 

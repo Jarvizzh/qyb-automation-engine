@@ -1,10 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Users, RefreshCw, Loader2, Play, Terminal } from 'lucide-react';
+import { Users, RefreshCw, Loader2, Play, Terminal, Calendar, Clock, Pause, Trash2 } from 'lucide-react';
 import { useSession } from '../../../contexts/SessionContext';
+import { useToast } from '../../../components/Toast/ToastContext';
 
 export const GroupSendTab: React.FC = () => {
   const { selectedMobile } = useSession();
+  const { addToast } = useToast();
   const {
     gsModule,
     setGsModule,
@@ -33,8 +35,35 @@ export const GroupSendTab: React.FC = () => {
     downloadHistoryLogs,
     deleteHistoryTask,
     stopTask,
-    fetchHistory
+    fetchHistory,
+
+    // Scheduled tasks hooks from useOpsCenter
+    scheduledTasks,
+    isSchedulesLoading,
+    fetchScheduledTasks,
+    handleCreateScheduleTask,
+    handleToggleScheduleTask,
+    handleTriggerScheduleTaskNow,
+    handleDeleteScheduleTask
   } = useOutletContext<any>();
+
+  // Card A scheduling states
+  const [cardAExecMode, setCardAExecMode] = useState<'now' | 'schedule'>('now');
+  const [cardASchedType, setCardASchedType] = useState<'once' | 'recurring'>('once');
+  const [cardARecurrence, setCardARecurrence] = useState<'once' | 'daily' | 'interval'>('daily');
+  const [cardAOnceTime, setCardAOnceTime] = useState<string>('');
+  const [cardADailyTime, setCardADailyTime] = useState<string>('12:00');
+  const [cardAIntervalVal, setCardAIntervalVal] = useState<number>(1);
+  const [cardAIntervalUnit, setCardAIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('minutes');
+
+  // Card B scheduling states
+  const [cardBExecMode, setCardBExecMode] = useState<'now' | 'schedule'>('now');
+  const [cardBSchedType, setCardBSchedType] = useState<'once' | 'recurring'>('once');
+  const [cardBRecurrence, setCardBRecurrence] = useState<'once' | 'daily' | 'interval'>('daily');
+  const [cardBOnceTime, setCardBOnceTime] = useState<string>('');
+  const [cardBDailyTime, setCardBDailyTime] = useState<string>('12:00');
+  const [cardBIntervalVal, setCardBIntervalVal] = useState<number>(1);
+  const [cardBIntervalUnit, setCardBIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('minutes');
 
   // Active pull of group lists on mount or selectedMobile changes
   useEffect(() => {
@@ -43,10 +72,97 @@ export const GroupSendTab: React.FC = () => {
     }
   }, [selectedMobile]);
 
-
   const filteredHistory = historyTasks.filter((t: any) => 
-    t.filename && t.filename.startsWith("运营群发治理")
+    t.filename && (
+      t.filename.startsWith("运营群发治理") || 
+      t.filename.startsWith("⏰定时运营") || 
+      t.filename.startsWith("⏰手动定时运营")
+    )
   );
+
+  const onScheduleCardA = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
+    if (!selectedGsTaskId) return addToast("请选择任务", "warning");
+
+    const scheduleConfig: any = {
+      schedule_type: cardASchedType,
+      recurrence: cardASchedType === 'once' ? 'once' : cardARecurrence,
+    };
+
+    if (cardASchedType === 'once') {
+      if (!cardAOnceTime) {
+        addToast("请选择定时执行的具体时间", "warning");
+        return;
+      }
+      const ts = Math.floor(new Date(cardAOnceTime).getTime() / 1000);
+      if (ts < Math.floor(Date.now() / 1000)) {
+        addToast("定时执行时间不能早于当前时间", "warning");
+        return;
+      }
+      scheduleConfig.timestamp = ts;
+    } else {
+      if (cardARecurrence === 'daily') {
+        if (!cardADailyTime) {
+          addToast("请选择每日执行的具体时间", "warning");
+          return;
+        }
+        scheduleConfig.run_time = cardADailyTime;
+      } else {
+        if (!cardAIntervalVal || cardAIntervalVal < 1) {
+          addToast("请输入有效的间隔数值(>=1)", "warning");
+          return;
+        }
+        scheduleConfig.interval_value = cardAIntervalVal;
+        scheduleConfig.interval_unit = cardAIntervalUnit;
+      }
+    }
+
+    await handleCreateScheduleTask('title_randomize', scheduleConfig);
+  };
+
+  const onScheduleCardB = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
+    if (!selectedGsTaskId) return addToast("请选择任务", "warning");
+    if (!replaceSourceUrl.trim()) return addToast("请填写待替换的源链接", "warning");
+    if (!replaceNewUrl.trim()) return addToast("请填写替换后的新链接", "warning");
+
+    const scheduleConfig: any = {
+      schedule_type: cardBSchedType,
+      recurrence: cardBSchedType === 'once' ? 'once' : cardBRecurrence,
+    };
+
+    if (cardBSchedType === 'once') {
+      if (!cardBOnceTime) {
+        addToast("请选择定时执行的具体时间", "warning");
+        return;
+      }
+      const ts = Math.floor(new Date(cardBOnceTime).getTime() / 1000);
+      if (ts < Math.floor(Date.now() / 1000)) {
+        addToast("定时执行时间不能早于当前时间", "warning");
+        return;
+      }
+      scheduleConfig.timestamp = ts;
+    } else {
+      if (cardBRecurrence === 'daily') {
+        if (!cardBDailyTime) {
+          addToast("请选择每日执行的具体时间", "warning");
+          return;
+        }
+        scheduleConfig.run_time = cardBDailyTime;
+      } else {
+        if (!cardBIntervalVal || cardBIntervalVal < 1) {
+          addToast("请输入有效的间隔数值(>=1)", "warning");
+          return;
+        }
+        scheduleConfig.interval_value = cardBIntervalVal;
+        scheduleConfig.interval_unit = cardBIntervalUnit;
+      }
+    }
+
+    await handleCreateScheduleTask('url_replacement', scheduleConfig);
+  };
 
   return (
     <div>
@@ -189,17 +305,132 @@ export const GroupSendTab: React.FC = () => {
                   <option value="Fantasy">玄幻风格随机</option>
                 </select>
               </div>
+
+              {/* Card A Execution Schedule */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem', marginTop: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '0.75rem' }}>
+                  🕒 执行方式
+                </label>
+                <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <input 
+                      type="radio" 
+                      name="cardAExecMode" 
+                      value="now" 
+                      checked={cardAExecMode === 'now'}
+                      onChange={() => setCardAExecMode('now')} 
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>立即执行</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <input 
+                      type="radio" 
+                      name="cardAExecMode" 
+                      value="schedule" 
+                      checked={cardAExecMode === 'schedule'}
+                      onChange={() => setCardAExecMode('schedule')} 
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>定时执行</span>
+                  </label>
+                </div>
+
+                {cardAExecMode === 'schedule' && (
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>定时类型</label>
+                      <select 
+                        value={cardASchedType} 
+                        onChange={e => {
+                          const val = e.target.value as 'once' | 'recurring';
+                          setCardASchedType(val);
+                        }}
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                      >
+                        <option value="once">单次定时</option>
+                        <option value="recurring">循环定时</option>
+                      </select>
+                    </div>
+
+                    {cardASchedType === 'once' ? (
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>执行时间</label>
+                        <input 
+                          type="datetime-local" 
+                          value={cardAOnceTime} 
+                          onChange={e => setCardAOnceTime(e.target.value)} 
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>循环周期</label>
+                          <select 
+                            value={cardARecurrence} 
+                            onChange={e => setCardARecurrence(e.target.value as 'daily' | 'interval')}
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                          >
+                            <option value="daily">每日定时</option>
+                            <option value="interval">每隔时间</option>
+                          </select>
+                        </div>
+
+                        {cardARecurrence === 'daily' ? (
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>每日执行时间</label>
+                            <input 
+                              type="time" 
+                              value={cardADailyTime} 
+                              onChange={e => setCardADailyTime(e.target.value)} 
+                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>间隔数值</label>
+                              <input 
+                                type="number" 
+                                min={1} 
+                                value={cardAIntervalVal} 
+                                onChange={e => setCardAIntervalVal(Number(e.target.value))} 
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                              />
+                            </div>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>间隔单位</label>
+                              <select 
+                                value={cardAIntervalUnit} 
+                                onChange={e => setCardAIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                              >
+                                <option value="minutes">分钟</option>
+                                <option value="hours">小时</option>
+                                <option value="days">天</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ marginTop: '2rem' }}>
               <button 
                 className="btn btn-primary" 
-                style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                onClick={handleStartRandomize}
+                style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: cardAExecMode === 'schedule' ? 'linear-gradient(135deg, var(--accent-purple) 0%, #6366f1 100%)' : undefined }}
+                onClick={cardAExecMode === 'schedule' ? onScheduleCardA : handleStartRandomize}
                 disabled={isGsActionRunning}
               >
                 {isGsActionRunning ? (
                   <><Loader2 className="animate-spin" size={18} /> 正在启动异步任务...</>
+                ) : cardAExecMode === 'schedule' ? (
+                  <><Calendar size={18} /> 创建定时更换任务</>
                 ) : (
                   <><Play size={18} /> 启动随机更换任务</>
                 )}
@@ -253,17 +484,132 @@ export const GroupSendTab: React.FC = () => {
                   <option value="Fantasy">玄幻风格随机</option>
                 </select>
               </div>
+
+              {/* Card B Execution Schedule */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem', marginTop: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '0.75rem' }}>
+                  🕒 执行方式
+                </label>
+                <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <input 
+                      type="radio" 
+                      name="cardBExecMode" 
+                      value="now" 
+                      checked={cardBExecMode === 'now'}
+                      onChange={() => setCardBExecMode('now')} 
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>立即执行</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <input 
+                      type="radio" 
+                      name="cardBExecMode" 
+                      value="schedule" 
+                      checked={cardBExecMode === 'schedule'}
+                      onChange={() => setCardBExecMode('schedule')} 
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>定时执行</span>
+                  </label>
+                </div>
+
+                {cardBExecMode === 'schedule' && (
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>定时类型</label>
+                      <select 
+                        value={cardBSchedType} 
+                        onChange={e => {
+                          const val = e.target.value as 'once' | 'recurring';
+                          setCardBSchedType(val);
+                        }}
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                      >
+                        <option value="once">单次定时</option>
+                        <option value="recurring">循环定时</option>
+                      </select>
+                    </div>
+
+                    {cardBSchedType === 'once' ? (
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>执行时间</label>
+                        <input 
+                          type="datetime-local" 
+                          value={cardBOnceTime} 
+                          onChange={e => setCardBOnceTime(e.target.value)} 
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>循环周期</label>
+                          <select 
+                            value={cardBRecurrence} 
+                            onChange={e => setCardBRecurrence(e.target.value as 'daily' | 'interval')}
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                          >
+                            <option value="daily">每日定时</option>
+                            <option value="interval">每隔时间</option>
+                          </select>
+                        </div>
+
+                        {cardBRecurrence === 'daily' ? (
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>每日执行时间</label>
+                            <input 
+                              type="time" 
+                              value={cardBDailyTime} 
+                              onChange={e => setCardBDailyTime(e.target.value)} 
+                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>间隔数值</label>
+                              <input 
+                                type="number" 
+                                min={1} 
+                                value={cardBIntervalVal} 
+                                onChange={e => setCardBIntervalVal(Number(e.target.value))} 
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                              />
+                            </div>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>间隔单位</label>
+                              <select 
+                                value={cardBIntervalUnit} 
+                                onChange={e => setCardBIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                              >
+                                <option value="minutes">分钟</option>
+                                <option value="hours">小时</option>
+                                <option value="days">天</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ marginTop: '2rem' }}>
               <button 
                 className="btn btn-primary" 
-                style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                onClick={handleStartReplacement}
+                style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: cardBExecMode === 'schedule' ? 'linear-gradient(135deg, var(--accent-cyan) 0%, #3b82f6 100%)' : undefined }}
+                onClick={cardBExecMode === 'schedule' ? onScheduleCardB : handleStartReplacement}
                 disabled={isGsActionRunning}
               >
                 {isGsActionRunning ? (
                   <><Loader2 className="animate-spin" size={18} /> 正在启动异步任务...</>
+                ) : cardBExecMode === 'schedule' ? (
+                  <><Calendar size={18} /> 创建定时替换任务</>
                 ) : (
                   <><Play size={18} /> 启动批量替换任务</>
                 )}
@@ -272,6 +618,146 @@ export const GroupSendTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Scheduled Tasks Management Queue */}
+      <div className="card" style={{ marginTop: '2rem', padding: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Calendar size={20} style={{ color: 'var(--accent-purple)' }} />
+            定时运营任务队列
+          </h3>
+          <button className="btn btn-outline" onClick={() => fetchScheduledTasks()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} disabled={isSchedulesLoading}>
+            <RefreshCw size={14} className={isSchedulesLoading ? "animate-spin" : ""} style={{ marginRight: '0.4rem' }} /> 刷新队列
+          </button>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table className="preview-table">
+            <thead>
+              <tr>
+                <th>治理任务</th>
+                <th>目标范围</th>
+                <th>策略/参数</th>
+                <th>调度规则</th>
+                <th>下次执行时间</th>
+                <th>上次执行</th>
+                <th>状态</th>
+                <th style={{ textAlign: 'center' }}>管理操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scheduledTasks.map((task: any) => {
+                const getGroupName = (id: string) => {
+                  if (id === 'ALL') return '所有分组';
+                  const g = gsGroups.find((x: any) => String(x.id) === id);
+                  return g ? g.name : `分组: ${id}`;
+                };
+                const getTaskName = (id: string) => {
+                  if (id === 'ALL') return '所有任务';
+                  const t = gsTasks.find((x: any) => String(x.id) === id);
+                  return t ? t.title : `任务: ${id}`;
+                };
+
+                return (
+                  <tr key={task.id}>
+                    <td>
+                      <span style={{ fontWeight: 600, color: task.task_type === 'title_randomize' ? 'var(--accent-purple)' : 'var(--accent-cyan)' }}>
+                        {task.task_type === 'title_randomize' ? '🎨 标题/封面随机更换' : '🔗 附件链接全局替换'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem' }}>
+                        <div>{getGroupName(task.group_id)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{getTaskName(task.task_id)}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.8rem' }}>
+                        {task.task_type === 'title_randomize' ? (
+                          <span>风格: {task.style === 'Default' ? '都市风格' : '玄幻风格'}</span>
+                        ) : (
+                          <div>
+                            <div>风格: {task.style === 'Original' ? '保持原版' : task.style === 'Default' ? '都市风格' : '玄幻风格'}</div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.8, color: 'var(--accent-cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }} title={`${task.params?.cur_url} ➔ ${task.params?.new_url}`}>
+                              {task.params?.cur_url} ➔ {task.params?.new_url}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.85rem', color: 'white' }}>
+                        {task.schedule_type === 'once' ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={12} /> 单次定时</span>
+                        ) : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <RefreshCw size={12} />
+                            {task.recurrence === 'daily' ? `每日 ${task.run_time}` : `每隔 ${task.interval_value} ${task.interval_unit === 'minutes' ? '分钟' : task.interval_unit === 'hours' ? '小时' : '天'}`}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.85rem', color: task.status === 'active' ? 'var(--accent-cyan)' : 'var(--text-dim)' }}>
+                        {task.status === 'active' && task.next_run_at ? new Date(task.next_run_at).toLocaleString('zh-CN') : '--'}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+                        {task.last_run_at ? new Date(task.last_run_at).toLocaleString('zh-CN') : '从未执行'}
+                      </span>
+                    </td>
+                    <td>
+                      {task.status === 'active' && <span className="badge badge-success">运行中</span>}
+                      {task.status === 'paused' && <span className="badge badge-gray">已暂停</span>}
+                      {task.status === 'completed' && <span className="badge badge-cyan">已完成</span>}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
+                        {task.status !== 'completed' && (
+                          <button 
+                            className={`btn ${task.status === 'active' ? 'btn-outline' : 'btn-primary'}`}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', minWidth: '55px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                            onClick={() => handleToggleScheduleTask(task.id)}
+                          >
+                            {task.status === 'active' ? (
+                              <><Pause size={10} /> 暂停</>
+                            ) : (
+                              <><Play size={10} /> 恢复</>
+                            )}
+                          </button>
+                        )}
+                        <button 
+                          className="btn btn-outline"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                          onClick={() => handleTriggerScheduleTaskNow(task.id)}
+                          title="立即手动触发一次执行"
+                        >
+                          <Play size={10} /> 触发
+                        </button>
+                        <button 
+                          className="btn btn-outline"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                          onClick={() => handleDeleteScheduleTask(task.id)}
+                        >
+                          <Trash2 size={10} /> 删除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {scheduledTasks.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+                    暂无定时运营治理任务，您可以在上方配置参数并创建定时任务。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Asynchronous Operations Task History & Controls */}
       <div className="card" style={{ marginTop: '2rem', padding: '2rem' }}>
@@ -362,3 +848,4 @@ export const GroupSendTab: React.FC = () => {
     </div>
   );
 };
+

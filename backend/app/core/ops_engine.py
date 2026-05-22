@@ -188,7 +188,7 @@ def run_groupsend_ops_task(task_id: str, task_type: str, session_id: str, params
                     task_rec.status = "stopped"
                 else:
                     task_rec.status = "completed"
-                task_rec.completed_at = datetime.datetime.utcnow()
+                task_rec.completed_at = datetime.datetime.now()
                 db.commit()
         except Exception as db_err:
             print(f"Error updating task status in background: {db_err}")
