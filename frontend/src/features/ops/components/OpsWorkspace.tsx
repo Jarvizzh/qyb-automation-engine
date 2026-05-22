@@ -34,7 +34,7 @@ export const OpsWorkspace: React.FC = () => {
               to="/ops/group-send" 
               className={({ isActive }) => `sub-tab ${isActive ? 'active' : ''}`}
             >
-              📣 群发任务分发
+              📣 群发任务治理
             </NavLink>
             <NavLink 
               to="/ops/sop" 
