@@ -32,7 +32,8 @@ export const GroupSendTab: React.FC = () => {
     viewHistoryLogs,
     downloadHistoryLogs,
     deleteHistoryTask,
-    stopTask
+    stopTask,
+    fetchHistory
   } = useOutletContext<any>();
 
   // Active pull of group lists on mount or selectedMobile changes
@@ -279,7 +280,7 @@ export const GroupSendTab: React.FC = () => {
             <Terminal size={20} style={{ color: 'var(--accent-cyan)' }} />
             运营群发治理 - 历史任务列表
           </h3>
-          <button className="btn btn-outline" onClick={() => fetchGsGroups()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+          <button className="btn btn-outline" onClick={() => fetchHistory()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
             <RefreshCw size={14} style={{ marginRight: '0.4rem' }} /> 刷新记录
           </button>
         </div>

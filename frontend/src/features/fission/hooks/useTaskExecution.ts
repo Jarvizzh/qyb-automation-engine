@@ -60,13 +60,14 @@ export const useTaskExecution = () => {
       if (event.data.includes("任务执行完毕") || event.data.includes("强制停止")) {
         setIsTaskRunning(false);
         clearPersistence();
+        fetchHistory();
       }
     };
 
     ws.onclose = () => {
       console.log("WebSocket closed");
     };
-  }, [wsBase, clearPersistence]);
+  }, [wsBase, clearPersistence, fetchHistory]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

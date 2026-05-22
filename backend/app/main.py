@@ -5,6 +5,8 @@ import multiprocessing
 import asyncio
 import requests
 import datetime
+import threading
+import queue
 from typing import Dict, List
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +51,7 @@ class TaskManager:
             "log_queue": log_queue,
             "logs": []
         }
+        self._start_log_drainer(task_id, log_queue)
         return process.pid
 
     def start_ops_task(self, task_id: str, task_type: str, session_id: str, params: dict):
@@ -69,7 +72,50 @@ class TaskManager:
             "log_queue": log_queue,
             "logs": []
         }
+        self._start_log_drainer(task_id, log_queue)
         return process.pid
+
+    def _start_log_drainer(self, task_id: str, log_queue: multiprocessing.Queue):
+        def drain_logs():
+            log_dir = "tasks/logs"
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            log_file_path = f"{log_dir}/{task_id}.log"
+            
+            try:
+                with open(log_file_path, "a", encoding="utf-8") as f:
+                    while True:
+                        try:
+                            # 1s timeout to check if process is dead
+                            msg = log_queue.get(timeout=1.0)
+                            if msg is None:
+                                f.write("--- 任务执行完毕 ---\n")
+                                f.flush()
+                                break
+                            f.write(msg + "\n")
+                            f.flush()
+                        except queue.Empty:
+                            # If queue is empty, check if the process is still running
+                            if task_id in self.active_tasks:
+                                process = self.active_tasks[task_id]["process"]
+                                if not process.is_alive():
+                                    # Process died unexpectedly without sending None
+                                    f.write("--- 任务非正常结束或进程已死亡 ---\n")
+                                    f.flush()
+                                    break
+                            else:
+                                break
+                        except Exception as get_err:
+                            print(f"Error getting from log queue for task {task_id}: {get_err}")
+                            break
+            except Exception as e:
+                print(f"Error in log drainer thread for task {task_id}: {e}")
+            finally:
+                if task_id in self.active_tasks:
+                    del self.active_tasks[task_id]
+
+        t = threading.Thread(target=drain_logs, daemon=True)
+        t.start()
 
     def stop_task(self, task_id: str):
         if task_id in self.active_tasks:
@@ -361,52 +407,46 @@ async def delete_task(task_id: str, db: Session = Depends(database.get_db)):
 @app.websocket("/api/ws/logs/{task_id}")
 async def websocket_logs(websocket: WebSocket, task_id: str, db: Session = Depends(database.get_db)):
     await websocket.accept()
-    if task_id not in task_manager.active_tasks:
-        await websocket.send_text("任务未找到或已关闭。")
-        await websocket.close()
-        return
     
-    log_queue = task_manager.active_tasks[task_id]["log_queue"]
     log_dir = "tasks/logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
     log_file_path = f"{log_dir}/{task_id}.log"
     
-    # 1. 先发送历史日志（如果有）
-    if os.path.exists(log_file_path):
-        try:
-            with open(log_file_path, "r", encoding="utf-8") as f:
-                history = f.read()
-                if history:
-                    for line in history.splitlines():
-                        await websocket.send_text(line)
-        except Exception as e:
-            print(f"Error reading history logs: {e}")
+    # Wait until the log file is created or check if task exists
+    for _ in range(10):
+        if os.path.exists(log_file_path):
+            break
+        await asyncio.sleep(0.2)
+        
+    if not os.path.exists(log_file_path):
+        await websocket.send_text("日志文件不存在。")
+        await websocket.close()
+        return
 
-    # 2. 持续监听新日志
     try:
-        with open(log_file_path, "a", encoding="utf-8") as f:
+        with open(log_file_path, "r", encoding="utf-8") as f:
+            # 1. First send all existing historical logs
+            for line in f:
+                await websocket.send_text(line.rstrip("\r\n"))
+            
+            # 2. Continuously tail the file
             while True:
-                # 非阻塞读取队列
-                if not log_queue.empty():
-                    msg = log_queue.get()
-                    if msg is None: # 结束标记
-                        await websocket.send_text("--- 任务执行完毕 ---")
-                        break
-                    
-                    f.write(msg + "\n")
-                    f.flush()
-                    await websocket.send_text(msg)
+                line = f.readline()
+                if line:
+                    await websocket.send_text(line.rstrip("\r\n"))
                 else:
+                    # No new line. Check if task is still active.
+                    if task_id not in task_manager.active_tasks:
+                        # Give a brief sleep and do a final read to capture any trailing logs
+                        await asyncio.sleep(0.5)
+                        for line in f:
+                            await websocket.send_text(line.rstrip("\r\n"))
+                        break
                     await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         pass
     except Exception as e:
         print(f"WS Error: {e}")
     finally:
-        # 任务结束后清理 active_tasks
-        if task_id in task_manager.active_tasks:
-            del task_manager.active_tasks[task_id]
         try:
             await websocket.close()
         except:

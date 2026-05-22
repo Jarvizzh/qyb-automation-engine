@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useSession } from '../../../contexts/SessionContext';
 import { useToast } from '../../../components/Toast/ToastContext';
@@ -62,14 +62,14 @@ export const useOpsCenter = () => {
   const [isStatsQuerying, setIsStatsQuerying] = useState(false);
 
   // Fetch History for Operations
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await axios.get(`${apiBase}/api/tasks`);
       setHistoryTasks(res.data);
     } catch (err) {
       console.error("Fetch history failed", err);
     }
-  };
+  }, [apiBase]);
 
   const viewHistoryLogs = async (taskId: string) => {
     try {
@@ -390,7 +390,19 @@ export const useOpsCenter = () => {
 
   useEffect(() => {
     fetchHistory();
-  }, []);
+  }, [fetchHistory]);
+
+  // Poll tasks status in real-time when there are active running tasks
+  useEffect(() => {
+    const hasRunningTasks = historyTasks.some(t => t.status === 'running');
+    if (!hasRunningTasks) return;
+
+    const interval = setInterval(() => {
+      fetchHistory();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [historyTasks, fetchHistory]);
 
   useEffect(() => {
     if (selectedMobile !== globalRetentionReportsLoadedMobile) {
