@@ -627,7 +627,7 @@ export const GroupSendTab: React.FC = () => {
             定时运营任务队列
           </h3>
           <button className="btn btn-outline" onClick={() => fetchScheduledTasks()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} disabled={isSchedulesLoading}>
-            <RefreshCw size={14} className={isSchedulesLoading ? "animate-spin" : ""} style={{ marginRight: '0.4rem' }} /> 刷新队列
+            <RefreshCw size={14} className={isSchedulesLoading ? "animate-spin" : ""} style={{ marginRight: '0.4rem' }} /> 刷新
           </button>
         </div>
 
@@ -674,7 +674,7 @@ export const GroupSendTab: React.FC = () => {
                     <td>
                       <div style={{ fontSize: '0.85rem' }}>
                         <div>{getGroupName(task.group_id)}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{getTaskName(task.task_id)}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{getTaskName(task.task_id)}</div>
                       </div>
                     </td>
                     <td>
@@ -714,9 +714,9 @@ export const GroupSendTab: React.FC = () => {
                       </span>
                     </td>
                     <td>
-                      {task.status === 'active' && <span className="badge badge-success">运行中</span>}
+                      {task.status === 'active' && <span className="badge badge-cyan">生效中</span>}
                       {task.status === 'paused' && <span className="badge badge-gray">已暂停</span>}
-                      {task.status === 'completed' && <span className="badge badge-cyan">已完成</span>}
+                      {task.status === 'completed' && <span className="badge badge-success">已结束</span>}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
@@ -770,10 +770,10 @@ export const GroupSendTab: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Terminal size={20} style={{ color: 'var(--accent-cyan)' }} />
-            运营群发治理 - 历史任务列表
+            运营任务执行记录
           </h3>
           <button className="btn btn-outline" onClick={() => fetchHistory()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-            <RefreshCw size={14} style={{ marginRight: '0.4rem' }} /> 刷新记录
+            <RefreshCw size={14} style={{ marginRight: '0.4rem' }} /> 刷新
           </button>
         </div>
 
@@ -793,16 +793,16 @@ export const GroupSendTab: React.FC = () => {
                 const isTaskRunningNow = task.status === 'running';
                 return (
                   <tr key={task.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{task.id.substring(0, 8)}...</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{task.id}</td>
                     <td>
-                      <span style={{ fontWeight: 600, color: 'white' }}>{task.filename}</span>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{task.filename}</span>
                     </td>
                     <td>{new Date(task.created_at).toLocaleString('zh-CN')}</td>
                     <td>
                       {task.status === 'running' && <span className="badge badge-cyan">● 运行中</span>}
                       {task.status === 'completed' && <span className="badge badge-success">已完成</span>}
                       {task.status === 'stopped' && <span className="badge badge-gray">已停止</span>}
-                      {task.status === 'failed' && <span className="badge badge-danger">失败</span>}
+                      {task.status === 'failed' && <span className="badge badge-gray">执行失败</span>}
                     </td>
                     <td style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                       <button 

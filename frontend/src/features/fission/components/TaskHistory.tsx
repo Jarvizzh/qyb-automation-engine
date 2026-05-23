@@ -23,7 +23,7 @@ export const TaskHistory: React.FC<TaskHistoryProps> = React.memo(({
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h3>任务执行历史</h3>
+        <h3>裂变任务执行记录</h3>
         <button 
           className="btn btn-outline" 
           onClick={fetchHistory} 
