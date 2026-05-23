@@ -16,8 +16,11 @@ export const TaskHistory: React.FC<TaskHistoryProps> = React.memo(({
   downloadHistoryLogs,
   deleteHistoryTask
 }) => {
-  const filteredTasks = historyTasks.filter(
-    (t: any) => !t.filename || !t.filename.startsWith("运营群发治理")
+  const filteredTasks = historyTasks.filter((t: any) => 
+    t.filename && 
+    !t.filename.startsWith("运营群发治理") &&
+    !t.filename.startsWith("⏰定时运营") &&
+    !t.filename.startsWith("⏰手动定时运营")
   );
 
   return (
