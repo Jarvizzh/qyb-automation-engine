@@ -57,10 +57,7 @@ export const TaskHistory: React.FC<TaskHistoryProps> = React.memo(({
                   </span>
                 </td>
                 <td style={{ fontSize: '0.8rem' }}>
-                  {new Date(task.created_at + (task.created_at.includes('Z') ? '' : 'Z')).toLocaleString('zh-CN', { 
-                    timeZone: 'Asia/Shanghai',
-                    hour12: false 
-                  })}
+                  {new Date(task.created_at).toLocaleString('zh-CN', { hour12: false })}
                 </td>
                 <td>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
