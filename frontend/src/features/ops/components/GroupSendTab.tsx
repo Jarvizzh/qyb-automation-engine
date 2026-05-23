@@ -672,9 +672,9 @@ export const GroupSendTab: React.FC = () => {
                       </span>
                     </td>
                     <td>
-                      <div style={{ fontSize: '0.85rem' }}>
+                      <div style={{ fontSize: '0.8rem' }}>
                         <div>{getGroupName(task.group_id)}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{getTaskName(task.task_id)}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{getTaskName(task.task_id)}</div>
                       </div>
                     </td>
                     <td>
