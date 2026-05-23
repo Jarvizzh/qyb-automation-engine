@@ -636,6 +636,7 @@ export const GroupSendTab: React.FC = () => {
             <thead>
               <tr>
                 <th>治理任务</th>
+                <th>群发模式</th>
                 <th>目标范围</th>
                 <th>策略/参数</th>
                 <th>调度规则</th>
@@ -663,6 +664,11 @@ export const GroupSendTab: React.FC = () => {
                     <td>
                       <span style={{ fontWeight: 600, color: task.task_type === 'title_randomize' ? 'var(--accent-purple)' : 'var(--accent-cyan)' }}>
                         {task.task_type === 'title_randomize' ? '🎨 标题/封面随机更换' : '🔗 附件链接全局替换'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${task.module === 7 ? 'badge-pink' : 'badge-cyan'}`} style={{ fontSize: '0.8rem' }}>
+                        {task.module === 7 ? '高级群发' : '极速群发'}
                       </span>
                     </td>
                     <td>
@@ -749,7 +755,7 @@ export const GroupSendTab: React.FC = () => {
               })}
               {scheduledTasks.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
                     暂无定时运营治理任务，您可以在上方配置参数并创建定时任务。
                   </td>
                 </tr>
