@@ -80,6 +80,20 @@ export const GroupSendTab: React.FC = () => {
     )
   );
 
+  // Frontend Pagination States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 10;
+  const totalItems = filteredHistory.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+
+  useEffect(() => {
+    if (currentPage > 1 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginatedTasks = filteredHistory.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const onScheduleCardA = async () => {
     if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
     if (!selectedGsGroupId) return addToast("请选择任务分组", "warning");
@@ -789,7 +803,7 @@ export const GroupSendTab: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredHistory.map((task: any) => {
+              {paginatedTasks.map((task: any) => {
                 const isTaskRunningNow = task.status === 'running';
                 return (
                   <tr key={task.id}>
@@ -850,6 +864,45 @@ export const GroupSendTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginTop: '1.5rem', 
+            paddingTop: '1rem',
+            borderTop: '1px solid var(--border-glass)',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+              显示第 {(currentPage - 1) * pageSize + 1} 到 {Math.min(currentPage * pageSize, totalItems)} 条，共 {totalItems} 条记录
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button 
+                className="btn btn-outline" 
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              >
+                上一页
+              </button>
+              <span style={{ fontSize: '0.85rem', color: 'white', padding: '0 0.5rem' }}>
+                {currentPage} / {totalPages}
+              </span>
+              <button 
+                className="btn btn-outline" 
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
