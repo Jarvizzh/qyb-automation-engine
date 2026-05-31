@@ -144,21 +144,17 @@ export const useOpsCenter = () => {
   };
 
   // Stats Tag Functions
-  const fetchCorps = async () => {
+  const fetchCorps = useCallback(async () => {
     if (!selectedMobile) return;
     try {
       const res = await axios.get(`${apiBase}/api/stats/corps?mobile=${selectedMobile}`);
       setCorps(res.data);
-      if (res.data.length > 0 && !selectedCorp) {
-        setSelectedCorp(res.data[0]);
-      }
-      if (res.data.length > 0 && !selectedClearCorp) {
-        setSelectedClearCorp(res.data[0]);
-      }
+      setSelectedCorp(prev => prev || (res.data.length > 0 ? res.data[0] : ''));
+      setSelectedClearCorp(prev => prev || (res.data.length > 0 ? res.data[0] : ''));
     } catch (err) {
       console.error("Fetch corps failed", err);
     }
-  };
+  }, [selectedMobile, apiBase]);
 
   const fetchCorpTags = useCallback(async (corpName: string) => {
     if (!selectedMobile || !corpName) {
