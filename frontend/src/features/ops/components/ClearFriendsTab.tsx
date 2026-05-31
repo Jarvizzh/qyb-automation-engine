@@ -182,7 +182,7 @@ export const ClearFriendsTab: React.FC = () => {
       {/* 2. Real-time Live Terminal Console */}
       <div className="card" style={{ marginBottom: '2rem', border: '1px solid var(--border-glass)' }}>
         <h4 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: 'var(--accent-cyan)' }}>
-          <TermIcon size={20} /> 实时清理监控台
+          <TermIcon size={20} /> 实时监控台
         </h4>
         <div className="console" ref={consoleRef} style={{ height: '350px', overflowY: 'auto' }}>
           {clearLogs.map((log: string, i: number) => {

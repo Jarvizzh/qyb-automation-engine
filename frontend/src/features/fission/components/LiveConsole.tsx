@@ -16,8 +16,8 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({ logs }) => {
 
   return (
     <div className="card">
-      <h3 style={{ marginBottom: '1.5rem' }}>
-        <Terminal size={20} /> 实时控制台
+      <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <Terminal size={20} /> 实时监控台
       </h3>
       <div className="console" ref={consoleRef}>
         {logs.map((log, i) => {
