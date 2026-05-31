@@ -7,7 +7,7 @@ import requests
 import datetime
 import threading
 import queue
-from typing import Dict, List
+from typing import Dict, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
