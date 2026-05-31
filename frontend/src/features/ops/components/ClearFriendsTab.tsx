@@ -108,7 +108,7 @@ export const ClearFriendsTab: React.FC = () => {
           </div>
 
           {/* Optional Tag Filter Select Dropdown */}
-          <div className="input-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
+          <div className="input-group" style={{ flex: '0 0 250px', marginBottom: 0 }}>
             <label>企业标签过滤 (可选)</label>
             <select 
               value={clearTagName} 
