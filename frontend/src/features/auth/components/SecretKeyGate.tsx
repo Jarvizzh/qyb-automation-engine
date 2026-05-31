@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Key, ShieldCheck } from 'lucide-react';
+import { Key, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useSession } from '../../../contexts/SessionContext';
 import { useToast } from '../../../components/Toast/ToastContext';
 
@@ -7,6 +7,7 @@ export const SecretKeyGate: React.FC = () => {
   const { verifySecret } = useSession();
   const { addToast } = useToast();
   const [secretKey, setSecretKey] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
   const handleVerify = async () => {
@@ -30,14 +31,34 @@ export const SecretKeyGate: React.FC = () => {
         <p style={{ color: 'var(--text-dim)', marginBottom: '2rem', fontSize: '0.9rem' }}>请输入系统密钥以解锁自动化引擎核心功能</p>
         
         <div className="input-group" style={{ textAlign: 'left' }}>
-          <input 
-            type="password" 
-            value={secretKey} 
-            onChange={e => setSecretKey(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleVerify()}
-            placeholder="请输入系统密钥"
-            style={{ letterSpacing: '0.2em' }}
-          />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+            <input 
+              type={showSecret ? "text" : "password"} 
+              value={secretKey} 
+              onChange={e => setSecretKey(e.target.value)} 
+              onKeyDown={e => e.key === 'Enter' && handleVerify()}
+              placeholder="请输入系统密钥"
+              style={{ width: '100%', paddingRight: '2.5rem', letterSpacing: showSecret ? 'normal' : '0.2em' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowSecret(!showSecret)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 0,
+                outline: 'none'
+              }}
+            >
+              {showSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
         
         <button 

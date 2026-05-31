@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserCheck, Trash2 } from 'lucide-react';
+import { UserCheck, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useSession } from '../../../contexts/SessionContext';
 import { useToast } from '../../../components/Toast/ToastContext';
 
@@ -9,6 +9,7 @@ export const SessionManager: React.FC = () => {
   
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = async () => {
@@ -40,13 +41,34 @@ export const SessionManager: React.FC = () => {
         </div>
         <div className="input-group">
           <label>密码</label>
-          <input 
-            type="password" 
-            value={password} 
-            onChange={e => setPassword(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleLogin()} 
-            placeholder="企微宝登录密码" 
-          />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+            <input 
+              type={showPassword ? "text" : "password"} 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} 
+              placeholder="企微宝登录密码" 
+              style={{ width: '100%', paddingRight: '2.5rem' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 0,
+                outline: 'none'
+              }}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
         <button className="btn btn-primary" onClick={handleLogin} disabled={isLoggingIn}>
           {isLoggingIn ? '正在授权...' : '立即授权'}
