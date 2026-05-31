@@ -445,12 +445,17 @@ async def start_task(req: schemas.TaskCreate, mobile: str, db: Session = Depends
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str, db: Session = Depends(database.get_db)):
     success = task_manager.stop_task(task_id)
-    if success:
-        task = db.query(models.TaskRecord).filter(models.TaskRecord.id == task_id).first()
-        if task:
-            task.status = "stopped"
-            db.commit()
+    
+    # 无论是进程内存中成功停止，还是进程已经不在内存中，只要数据库中存在该记录且为运行中/等待中，都确保其数据库状态更新为已停止
+    task = db.query(models.TaskRecord).filter(models.TaskRecord.id == task_id).first()
+    if task:
+        task.status = "stopped"
+        db.commit()
         return {"status": "success"}
+        
+    if success:
+        return {"status": "success"}
+        
     raise HTTPException(status_code=404, detail="任务不存在或已结束")
 
 @app.get("/api/tasks/{task_id}/status")
