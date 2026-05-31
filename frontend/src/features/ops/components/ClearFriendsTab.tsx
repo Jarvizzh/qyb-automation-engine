@@ -123,7 +123,7 @@ export const ClearFriendsTab: React.FC = () => {
               ) : (
                 corpTags.map((tag: any) => (
                   <option key={tag.id} value={tag.name}>
-                    [{tag.group}] {tag.name}
+                    {tag.group === '未分组' ? tag.name : `[${tag.group}] ${tag.name}`}
                   </option>
                 ))
               )}
