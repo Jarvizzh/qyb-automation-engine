@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Play, Square, Download } from 'lucide-react';
+import { Upload, Play, Square } from 'lucide-react';
 import { useSession } from '../../../contexts/SessionContext';
 
 interface FissionTerminalProps {
@@ -8,8 +8,6 @@ interface FissionTerminalProps {
   isTaskRunning: boolean;
   startTask: () => void;
   stopTask: () => void;
-  downloadLogs: () => void;
-  logsLength: number;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -19,8 +17,6 @@ export const FissionTerminal: React.FC<FissionTerminalProps> = ({
   isTaskRunning,
   startTask,
   stopTask,
-  downloadLogs,
-  logsLength,
   handleFileUpload
 }) => {
   const { sessions, selectedMobile, setSelectedMobile } = useSession();
@@ -63,9 +59,6 @@ export const FissionTerminal: React.FC<FissionTerminalProps> = ({
               <Square size={18} /> 强制停止
             </button>
           )}
-          <button className="btn btn-outline" onClick={downloadLogs} disabled={logsLength === 0}>
-             <Download size={18} /> 下载日志
-          </button>
         </div>
       </div>
     </div>

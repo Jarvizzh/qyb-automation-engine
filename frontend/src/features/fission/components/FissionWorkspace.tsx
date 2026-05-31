@@ -23,8 +23,7 @@ export const FissionWorkspace: React.FC = () => {
     fetchHistory,
     viewHistoryLogs,
     deleteHistoryTask,
-    downloadHistoryLogs,
-    downloadLogs
+    downloadHistoryLogs
   } = useTaskExecution();
 
   return (
@@ -35,8 +34,6 @@ export const FissionWorkspace: React.FC = () => {
         isTaskRunning={isTaskRunning}
         startTask={startTask}
         stopTask={stopTask}
-        downloadLogs={downloadLogs}
-        logsLength={logs.length}
         handleFileUpload={handleFileUpload}
       />
 

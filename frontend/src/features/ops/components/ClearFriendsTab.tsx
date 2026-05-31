@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Play, Square, Download, RefreshCw, Terminal as TermIcon, FileText } from 'lucide-react';
+import { Play, Square, RefreshCw, Terminal as TermIcon, FileText } from 'lucide-react';
 
 export const ClearFriendsTab: React.FC = () => {
   const {
@@ -20,7 +20,6 @@ export const ClearFriendsTab: React.FC = () => {
     isClearActionRunning,
     handleStartClearFriends,
     handleStopClearFriends,
-    downloadClearLogs,
     corpTags,
     isTagsLoading,
     
@@ -150,15 +149,6 @@ export const ClearFriendsTab: React.FC = () => {
                 <Square size={16} /> 强制停止
               </button>
             )}
-
-            <button 
-              className="btn btn-outline" 
-              onClick={downloadClearLogs} 
-              disabled={clearLogs.length === 0}
-              style={{ padding: '0.6rem 1.2rem', gap: '0.4rem' }}
-            >
-              <Download size={16} /> 下载日志
-            </button>
           </div>
         </div>
 
