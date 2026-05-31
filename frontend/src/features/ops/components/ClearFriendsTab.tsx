@@ -130,7 +130,7 @@ export const ClearFriendsTab: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0, marginLeft: 'auto' }}>
             {!isClearTaskRunning ? (
               <button 
                 className="btn btn-primary" 
