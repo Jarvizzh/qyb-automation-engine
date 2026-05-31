@@ -69,6 +69,8 @@ export const useOpsCenter = () => {
   const [isClearTaskRunning, setIsClearTaskRunning] = useState(false);
   const [currentClearTaskId, setCurrentClearTaskId] = useState<string | null>(null);
   const [isClearActionRunning, setIsClearActionRunning] = useState(false);
+  const [corpTags, setCorpTags] = useState<any[]>([]);
+  const [isTagsLoading, setIsTagsLoading] = useState(false);
 
   // Stats Tag States
   const [corps, setCorps] = useState<string[]>([]);
@@ -157,6 +159,33 @@ export const useOpsCenter = () => {
       console.error("Fetch corps failed", err);
     }
   };
+
+  const fetchCorpTags = useCallback(async (corpName: string) => {
+    if (!selectedMobile || !corpName) {
+      setCorpTags([]);
+      return;
+    }
+    setIsTagsLoading(true);
+    try {
+      const res = await axios.get(
+        `${apiBase}/api/ops/friends/corp-tags?mobile=${selectedMobile}&corp_name=${encodeURIComponent(corpName)}`
+      );
+      setCorpTags(res.data);
+    } catch (err) {
+      console.error("Fetch corp tags failed", err);
+      setCorpTags([]);
+    } finally {
+      setIsTagsLoading(false);
+    }
+  }, [selectedMobile, apiBase]);
+
+  useEffect(() => {
+    if (selectedClearCorp) {
+      fetchCorpTags(selectedClearCorp);
+    } else {
+      setCorpTags([]);
+    }
+  }, [selectedClearCorp, fetchCorpTags]);
 
   const handleQueryStats = async () => {
     if (!selectedMobile) return addToast("请先选择授权账号", "warning");
@@ -789,6 +818,9 @@ export const useOpsCenter = () => {
     isClearActionRunning,
     handleStartClearFriends,
     handleStopClearFriends,
-    downloadClearLogs
+    downloadClearLogs,
+    corpTags,
+    isTagsLoading,
+    fetchCorpTags
   };
 };

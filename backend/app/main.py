@@ -758,6 +758,41 @@ async def ops_get_clear_friends_count(mobile: str, corp_name: str, zombie_type: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/ops/friends/corp-tags")
+async def ops_get_corp_tags(mobile: str, corp_name: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+        
+    try:
+        client = get_miaokol_client(user.session_id)
+        corps = client.get_corps()
+        target_corp = None
+        for c in corps:
+            if str(c.get('id')) == str(corp_name) or c.get('short_name') == corp_name or c.get('name') == corp_name:
+                target_corp = c
+                break
+        if not target_corp:
+            return []
+            
+        corp_id = target_corp['id']
+        tag_groups = client.get_corp_tags(corp_id)
+        
+        flat_tags = []
+        for group in tag_groups:
+            group_name = group.get('name', '未分组')
+            for tag in group.get('tags', []):
+                if tag.get('wx_name'):
+                    flat_tags.append({
+                        "name": tag.get('wx_name'),
+                        "id": tag.get('wxid'),
+                        "group": group_name
+                    })
+        return flat_tags
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/ops/friends/clear-task")
 async def ops_start_clear_friends_task(req: schemas.ClearFriendsTaskStartRequest, mobile: str, db: Session = Depends(database.get_db)):
     user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()

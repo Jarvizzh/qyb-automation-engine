@@ -21,6 +21,8 @@ export const ClearFriendsTab: React.FC = () => {
     handleStartClearFriends,
     handleStopClearFriends,
     downloadClearLogs,
+    corpTags,
+    isTagsLoading,
     
     // History
     historyTasks,
@@ -72,7 +74,7 @@ export const ClearFriendsTab: React.FC = () => {
       {/* 1. Header & Configuration Card */}
       <div className="card" style={{ marginBottom: '2rem', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
         <h4 style={{ color: 'var(--accent-pink)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0' }}>
-          🧹 僵尸流失客户一键清理工具
+          🧹 流失客户一键清理工具
         </h4>
         
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -101,22 +103,31 @@ export const ClearFriendsTab: React.FC = () => {
               disabled={isClearTaskRunning}
               style={{ width: '100%' }}
             >
-              <option value="3">流失好友 (关系链标记已删除)</option>
-              <option value="2">拉黑好友 (关系链标记被拉黑)</option>
+              <option value="3">流失好友</option>
+              <option value="2">拉黑好友</option>
             </select>
           </div>
 
-          {/* Optional Tag Filter Textbox */}
+          {/* Optional Tag Filter Select Dropdown */}
           <div className="input-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
             <label>企业标签过滤 (可选)</label>
-            <input 
-              type="text" 
+            <select 
               value={clearTagName} 
               onChange={e => setClearTagName(e.target.value)}
-              placeholder="仅清理含有此标签的好友"
-              disabled={isClearTaskRunning}
+              disabled={isClearTaskRunning || isTagsLoading}
               style={{ width: '100%' }}
-            />
+            >
+              <option value="">-- 不进行标签过滤 (全部) --</option>
+              {isTagsLoading ? (
+                <option disabled>正在读取企业标签...</option>
+              ) : (
+                corpTags.map((tag: any) => (
+                  <option key={tag.id} value={tag.name}>
+                    [{tag.group}] {tag.name}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
 
           {/* Action Buttons */}
