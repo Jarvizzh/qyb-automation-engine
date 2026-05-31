@@ -73,11 +73,7 @@ export const GroupSendTab: React.FC = () => {
   }, [selectedMobile]);
 
   const filteredHistory = historyTasks.filter((t: any) => 
-    t.filename && (
-      (t.filename.startsWith("运营群发治理") && !t.filename.startsWith("运营群发治理-清理已")) || 
-      t.filename.startsWith("⏰定时运营") || 
-      t.filename.startsWith("⏰手动定时运营")
-    )
+    t.task_type === 'groupsend'
   );
 
   // Frontend Pagination States

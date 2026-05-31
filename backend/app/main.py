@@ -36,12 +36,52 @@ def startup_event():
     try:
         from sqlalchemy import text
         with database.engine.connect() as conn:
+            # 1. 检查 user_sessions 密码字段
             res = conn.execute(text("PRAGMA table_info(user_sessions);")).fetchall()
             cols = [r[1] for r in res]
             if "password" not in cols:
                 conn.execute(text("ALTER TABLE user_sessions ADD COLUMN password VARCHAR;"))
                 conn.commit()
                 print("⏰ [Database Migration] Successfully added 'password' column to 'user_sessions' table.")
+
+            # 2. 检查 task_records 任务类型字段并迁移历史数据
+            res = conn.execute(text("PRAGMA table_info(task_records);")).fetchall()
+            cols = [r[1] for r in res]
+            if "task_type" not in cols:
+                conn.execute(text("ALTER TABLE task_records ADD COLUMN task_type VARCHAR;"))
+                conn.commit()
+                print("⏰ [Database Migration] Successfully added 'task_type' column to 'task_records' table.")
+                
+                # 开始执行老旧历史数据清洗迁移
+                # 2.1 清理已流失/拉黑好友
+                conn.execute(text("""
+                    UPDATE task_records 
+                    SET task_type = 'clear_friends' 
+                    WHERE task_type IS NULL 
+                      AND filename LIKE '运营群发治理-清理已%';
+                """))
+                
+                # 2.2 运营群发/定时群发任务
+                conn.execute(text("""
+                    UPDATE task_records 
+                    SET task_type = 'groupsend' 
+                    WHERE task_type IS NULL 
+                      AND (
+                        (filename LIKE '运营群发治理%' AND filename NOT LIKE '运营群发治理-清理已%')
+                        OR filename LIKE '⏰定时运营%'
+                        OR filename LIKE '⏰手动定时运营%'
+                      );
+                """))
+                
+                # 2.3 裂变/Excel群发任务 (其余为空的任务默认归为 fission)
+                conn.execute(text("""
+                    UPDATE task_records 
+                    SET task_type = 'fission' 
+                    WHERE task_type IS NULL;
+                """))
+                
+                conn.commit()
+                print("⏰ [Database Migration] Successfully backfilled 'task_type' for historical records.")
     except Exception as migration_err:
         print(f"⏰ [Database Migration Warning] {migration_err}")
 
@@ -394,7 +434,8 @@ async def start_task(req: schemas.TaskCreate, mobile: str, db: Session = Depends
         filename="Manual Batch", # 实际可动态传入
         status="running",
         log_path=f"tasks/logs/{task_id}.log",
-        concurrency=req.concurrency
+        concurrency=req.concurrency,
+        task_type="fission"
     )
     db.add(new_task)
     db.commit()
@@ -553,7 +594,8 @@ async def ops_start_groupsend_task(req: schemas.GroupSendOpsTaskStartRequest, mo
         filename=filename,
         status="running",
         log_path=f"tasks/logs/{task_id}.log",
-        concurrency=1
+        concurrency=1,
+        task_type="groupsend"
     )
     db.add(new_task)
     db.commit()
@@ -732,7 +774,8 @@ async def ops_start_clear_friends_task(req: schemas.ClearFriendsTaskStartRequest
         status="running",
         log_path=f"tasks/logs/{task_id}.log",
         concurrency=1,
-        stats={"total": 0, "sent": 0, "failed": 0}
+        stats={"total": 0, "sent": 0, "failed": 0},
+        task_type="clear_friends"
     )
     db.add(new_task)
     db.commit()
@@ -834,7 +877,8 @@ async def ops_trigger_scheduled_task_now(task_id: str, db: Session = Depends(dat
         filename=filename,
         status="running",
         log_path=f"tasks/logs/{execution_task_id}.log",
-        concurrency=1
+        concurrency=1,
+        task_type="groupsend"
     )
     db.add(new_task_rec)
     db.commit()

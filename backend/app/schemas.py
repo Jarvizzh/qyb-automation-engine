@@ -36,6 +36,7 @@ class TaskResponse(BaseModel):
     created_at: datetime
     concurrency: int
     stats: Optional[dict] = None
+    task_type: Optional[str] = None
 
     class Config:
         from_attributes = True

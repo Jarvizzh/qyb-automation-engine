@@ -18,6 +18,7 @@ export interface TaskRecord {
   filename: string;
   status: string;
   created_at: string;
+  task_type?: string;
 }
 
 export interface StatsItem {

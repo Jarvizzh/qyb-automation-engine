@@ -23,6 +23,7 @@ class TaskRecord(Base):
     log_path = Column(String)
     concurrency = Column(Integer, default=8)
     stats = Column(JSON, nullable=True) # {total: 0, sent: 0, failed: 0}
+    task_type = Column(String, nullable=True) # 'fission', 'groupsend', or 'clear_friends'
 
 class SystemConfig(Base):
     __tablename__ = "system_config"

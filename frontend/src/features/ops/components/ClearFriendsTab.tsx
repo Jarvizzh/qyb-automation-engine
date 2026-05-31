@@ -50,7 +50,7 @@ export const ClearFriendsTab: React.FC = () => {
 
   // Filter tasks to strictly list only clear friends tasks
   const filteredHistory = historyTasks.filter((t: any) => 
-    t.filename && t.filename.startsWith("运营群发治理-清理已")
+    t.task_type === 'clear_friends'
   );
 
   // Frontend Pagination States

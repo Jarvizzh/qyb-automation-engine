@@ -141,7 +141,8 @@ def scheduler_loop():
                         log_path=log_file_path,
                         concurrency=1,
                         created_at=now_local,
-                        completed_at=now_local
+                        completed_at=now_local,
+                        task_type="groupsend"
                     )
                     db.add(new_rec)
                     
@@ -171,7 +172,8 @@ def scheduler_loop():
                     status="running",
                     log_path=log_file_path,
                     concurrency=1,
-                    created_at=now_local
+                    created_at=now_local,
+                    task_type="groupsend"
                 )
                 db.add(new_rec)
                 db.commit()
