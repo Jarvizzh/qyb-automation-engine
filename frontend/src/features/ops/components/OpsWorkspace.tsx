@@ -48,6 +48,12 @@ export const OpsWorkspace: React.FC = () => {
             >
               🏷️ 标签用户统计
             </NavLink>
+            <NavLink 
+              to="/ops/clear-friends" 
+              className={({ isActive }) => `sub-tab ${isActive ? 'active' : ''}`}
+            >
+              🧹 流失客户清理
+            </NavLink>
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>

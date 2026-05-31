@@ -10,6 +10,7 @@ import { GroupSendTab } from './features/ops/components/GroupSendTab';
 import { SopTab } from './features/ops/components/SopTab';
 import { RetentionReportsTab } from './features/ops/components/RetentionReportsTab';
 import { StatsTab } from './features/ops/components/StatsTab';
+import { ClearFriendsTab } from './features/ops/components/ClearFriendsTab';
 import './App.css';
 
 const App: React.FC = () => {
@@ -77,6 +78,7 @@ const App: React.FC = () => {
           <Route path="sop" element={<SopTab />} />
           <Route path="reports" element={<RetentionReportsTab />} />
           <Route path="stats" element={<StatsTab />} />
+          <Route path="clear-friends" element={<ClearFriendsTab />} />
         </Route>
         <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>

@@ -119,4 +119,11 @@ class ScheduledTaskResponse(BaseModel):
         from_attributes = True
 
 
+class ClearFriendsTaskStartRequest(BaseModel):
+    corp_name: str
+    zombie_type: str  # '2' or '3'
+    tag_name: Optional[str] = None
+
+
+
 

@@ -93,6 +93,28 @@ class TaskManager:
         self._start_log_drainer(task_id, log_queue)
         return process.pid
 
+    def start_delete_friends_task(self, task_id: str, mobile: str, corp_name: str, zombie_type: str, tag_name: str):
+        log_queue = multiprocessing.Queue()
+        stop_event = multiprocessing.Event()
+        
+        from .core.delete_friends_engine import run_delete_friends_task
+        
+        process = multiprocessing.Process(
+            target=run_delete_friends_task,
+            args=(task_id, mobile, corp_name, zombie_type, tag_name, log_queue, stop_event)
+        )
+        process.start()
+        
+        self.active_tasks[task_id] = {
+            "process": process,
+            "stop_event": stop_event,
+            "log_queue": log_queue,
+            "logs": []
+        }
+        self._start_log_drainer(task_id, log_queue)
+        return process.pid
+
+
     def _start_log_drainer(self, task_id: str, log_queue: multiprocessing.Queue):
         def drain_logs():
             log_dir = "tasks/logs"
@@ -629,6 +651,94 @@ async def ops_get_retention_report(mobile: str, db: Session = Depends(database.g
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ops/friends/clear-count")
+async def ops_get_clear_friends_count(mobile: str, corp_name: str, zombie_type: str, tag_name: Optional[str] = None, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+        
+    if zombie_type in ("1", "0"):
+        raise HTTPException(status_code=400, detail="安全性熔断：系统禁止获取正常好友(1)的数量！")
+        
+    try:
+        client = get_miaokol_client(user.session_id)
+        
+        corps = client.get_corps()
+        target_corp = None
+        for c in corps:
+            if str(c.get('id')) == str(corp_name) or c.get('short_name') == corp_name or c.get('name') == corp_name:
+                target_corp = c
+                break
+        if not target_corp:
+            raise HTTPException(status_code=404, detail=f"未找到该企业: {corp_name}")
+            
+        corp_id = target_corp['id']
+        
+        tag_id = None
+        if tag_name:
+            tag_groups = client.get_corp_tags(corp_id)
+            for group in tag_groups:
+                for tag in group.get('tags', []):
+                    if tag.get('wx_name') == tag_name:
+                        tag_id = tag.get('wxid')
+                        break
+                if tag_id:
+                    break
+                    
+        include_params = {
+            "corp_id": corp_id,
+            "zombie_type": str(zombie_type)
+        }
+        if tag_id:
+            include_params["corp_tag"] = {
+                "match_type": "1",
+                "ids": [tag_id]
+            }
+            
+        payload = {
+            "page": 1,
+            "page_size": 1,
+            "include_params": include_params,
+            "exclude_params": {}
+        }
+        
+        res_data = client.fetch_api("/api/contact/search", method="POST", data=payload)
+        count = res_data.get('distinct_contact_cnt', 0)
+        return {"status": "success", "count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ops/friends/clear-task")
+async def ops_start_clear_friends_task(req: schemas.ClearFriendsTaskStartRequest, mobile: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.UserSession).filter(models.UserSession.mobile == mobile).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="未找到该账号的授权信息")
+        
+    if req.zombie_type in ("1", "0"):
+        raise HTTPException(status_code=400, detail="安全性熔断：禁止清理正常活跃好友！")
+        
+    task_id = str(uuid.uuid4())
+    zombie_name = "拉黑好友" if req.zombie_type == "2" else "流失好友"
+    filename = f"运营群发治理-清理已{zombie_name}({req.corp_name})"
+    
+    task_manager.start_delete_friends_task(task_id, user.mobile, req.corp_name, req.zombie_type, req.tag_name)
+    
+    new_task = models.TaskRecord(
+        id=task_id,
+        filename=filename,
+        status="running",
+        log_path=f"tasks/logs/{task_id}.log",
+        concurrency=1,
+        stats={"total": 0, "sent": 0, "failed": 0}
+    )
+    db.add(new_task)
+    db.commit()
+    
+    return {"status": "success", "task_id": task_id}
+
 
 
 # --- 定时运营任务管理 (Scheduled Operations Governance) ---

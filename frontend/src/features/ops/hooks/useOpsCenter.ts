@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useSession } from '../../../contexts/SessionContext';
 import { useToast } from '../../../components/Toast/ToastContext';
@@ -13,7 +13,7 @@ let globalRetentionReportsCache: RetentionReportItem[] = [];
 let globalRetentionReportsLoadedMobile: string = '';
 
 export const useOpsCenter = () => {
-  const { selectedMobile, fetchSessions, setSelectedMobile, apiBase } = useSession();
+  const { selectedMobile, fetchSessions, setSelectedMobile, apiBase, wsBase } = useSession();
   const { addToast } = useToast();
   const confirm = useConfirm();
 
@@ -21,6 +21,10 @@ export const useOpsCenter = () => {
   const [historyTasks, setHistoryTasks] = useState<any[]>([]);
   const [historyLogs, setHistoryLogs] = useState<string[]>([]);
   const [showHistoryLogs, setShowHistoryLogs] = useState(false);
+
+  // WebSocket references for clear zombie friends
+  const clearWsRef = useRef<WebSocket | null>(null);
+  const clearFullLogsRef = useRef<string[]>([]);
 
 
   // A: Group-Send Governance States
@@ -57,8 +61,18 @@ export const useOpsCenter = () => {
   const [retentionReports, setRetentionReports] = useState<RetentionReportItem[]>(globalRetentionReportsCache);
   const [isReportsLoading, setIsReportsLoading] = useState(false);
 
+  // E: Clear Zombie Friends States
+  const [selectedClearCorp, setSelectedClearCorp] = useState('');
+  const [clearZombieType, setClearZombieType] = useState('3'); // '2' for blocked, '3' for lost
+  const [clearTagName, setClearTagName] = useState('');
+  const [clearLogs, setClearLogs] = useState<string[]>([]);
+  const [isClearTaskRunning, setIsClearTaskRunning] = useState(false);
+  const [currentClearTaskId, setCurrentClearTaskId] = useState<string | null>(null);
+  const [isClearActionRunning, setIsClearActionRunning] = useState(false);
+
   // Stats Tag States
   const [corps, setCorps] = useState<string[]>([]);
+  // Stats Tag Functions
   const [selectedCorp, setSelectedCorp] = useState('');
   const [tagType, setTagType] = useState<'smart' | 'enterprise'>('smart');
   const [tagName, setTagName] = useState('');
@@ -135,6 +149,9 @@ export const useOpsCenter = () => {
       setCorps(res.data);
       if (res.data.length > 0 && !selectedCorp) {
         setSelectedCorp(res.data[0]);
+      }
+      if (res.data.length > 0 && !selectedClearCorp) {
+        setSelectedClearCorp(res.data[0]);
       }
     } catch (err) {
       console.error("Fetch corps failed", err);
@@ -491,6 +508,161 @@ export const useOpsCenter = () => {
     }
   };
 
+  // Clear Friends Functions & WebSocket
+  const connectClearWebSocket = useCallback((taskId: string) => {
+    if (clearWsRef.current) clearWsRef.current.close();
+
+    const ws = new WebSocket(`${wsBase}/api/ws/logs/${taskId}`);
+    clearWsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      clearFullLogsRef.current.push(event.data);
+      setClearLogs((prev) => {
+        const next = [...prev, event.data];
+        if (next.length > 300) {
+          return next.slice(next.length - 300);
+        }
+        return next;
+      });
+
+      if (event.data.includes("任务执行完毕") || event.data.includes("强制停止")) {
+        setIsClearTaskRunning(false);
+        localStorage.removeItem('currentClearTaskId');
+        fetchHistory();
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("Clear WS closed");
+    };
+  }, [wsBase, fetchHistory]);
+
+  const handleStartClearFriends = async () => {
+    if (!selectedMobile) return addToast("请选择企微宝账号", "warning");
+    if (!selectedClearCorp) return addToast("请选择目标企业", "warning");
+    if (!clearZombieType) return addToast("请选择清理类型", "warning");
+
+    setIsClearActionRunning(true);
+    try {
+      // 1. Check session
+      const checkRes = await axios.get(`${apiBase}/api/auth/check-session/${selectedMobile}`);
+      if (checkRes.data.status === 'expired') {
+        addToast("授权已过期，请重新登录授权", "error");
+        fetchSessions();
+        setSelectedMobile('');
+        return;
+      }
+
+      // 2. Fetch the matching count first
+      addToast("正在计算待清理客户数量...", "info");
+      const tagParam = clearTagName.trim() ? `&tag_name=${encodeURIComponent(clearTagName.trim())}` : '';
+      const countRes = await axios.get(
+        `${apiBase}/api/ops/friends/clear-count?mobile=${selectedMobile}&corp_name=${encodeURIComponent(selectedClearCorp)}&zombie_type=${clearZombieType}${tagParam}`
+      );
+      
+      const matchCount = countRes.data.count;
+      if (matchCount === 0) {
+        addToast(`未检测到符合条件的待清理客户，无需操作。`, "info");
+        return;
+      }
+
+      // 3. Prompt user with two-step confirmation dialog
+      const zombieName = clearZombieType === '2' ? '已拉黑' : '已流失';
+      const confirmed = await confirm({
+        title: '⚠️ 确认启动客户清理任务',
+        message: `在企业【${selectedClearCorp}】中，共检测到符合条件的【${zombieName}】客户共 ${matchCount} 人。此操作将从您的企业微信中把他们彻底清理删除，且该过程不可逆！确定要继续执行彻底清理吗？`,
+        confirmText: '确认启动',
+        cancelText: '取消',
+        type: 'danger'
+      });
+
+      if (!confirmed) return;
+
+      // 4. Start clear task
+      const payload = {
+        corp_name: selectedClearCorp,
+        zombie_type: clearZombieType,
+        tag_name: clearTagName.trim() || undefined
+      };
+
+      const res = await axios.post(`${apiBase}/api/ops/friends/clear-task?mobile=${selectedMobile}`, payload);
+      if (res.data.status === 'success') {
+        const taskId = res.data.task_id;
+        setCurrentClearTaskId(taskId);
+        localStorage.setItem('currentClearTaskId', taskId);
+        setIsClearTaskRunning(true);
+        setClearLogs([]);
+        clearFullLogsRef.current = [];
+        connectClearWebSocket(taskId);
+        addToast("清理已流失客户任务已成功启动！", "success");
+        fetchHistory();
+      } else {
+        addToast("启动失败：" + JSON.stringify(res.data), "error");
+      }
+    } catch (err: any) {
+      addToast("启动失败: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsClearActionRunning(false);
+    }
+  };
+
+  const handleStopClearFriends = async () => {
+    if (!currentClearTaskId) return;
+    try {
+      await axios.post(`${apiBase}/api/tasks/${currentClearTaskId}/stop`);
+      localStorage.removeItem('currentClearTaskId');
+      setIsClearTaskRunning(false);
+      fetchHistory();
+      addToast("清理任务已强制停止", "info");
+    } catch (err: any) {
+      addToast("停止失败: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
+  const downloadClearLogs = () => {
+    if (!currentClearTaskId || clearFullLogsRef.current.length === 0) return;
+    const blob = new Blob([clearFullLogsRef.current.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clear-friends-log-${currentClearTaskId}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Recover active clear task on mount
+  useEffect(() => {
+    const recoverClearTask = async () => {
+      const savedTaskId = localStorage.getItem('currentClearTaskId');
+      if (savedTaskId) {
+        try {
+          const res = await axios.get(`${apiBase}/api/tasks/${savedTaskId}/status`);
+          if (res.data.is_active) {
+            setCurrentClearTaskId(savedTaskId);
+            setIsClearTaskRunning(true);
+            setClearLogs([]);
+            clearFullLogsRef.current = [];
+            connectClearWebSocket(savedTaskId);
+          } else {
+            localStorage.removeItem('currentClearTaskId');
+          }
+        } catch (e) {
+          localStorage.removeItem('currentClearTaskId');
+        }
+      }
+    };
+    recoverClearTask();
+  }, [apiBase, connectClearWebSocket]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (clearWsRef.current) {
+        clearWsRef.current.close();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
@@ -602,6 +774,21 @@ export const useOpsCenter = () => {
     statsResults,
     isStatsQuerying,
     fetchCorps,
-    handleQueryStats
+    handleQueryStats,
+
+    // Clear Friends
+    selectedClearCorp,
+    setSelectedClearCorp,
+    clearZombieType,
+    setClearZombieType,
+    clearTagName,
+    setClearTagName,
+    clearLogs,
+    isClearTaskRunning,
+    currentClearTaskId,
+    isClearActionRunning,
+    handleStartClearFriends,
+    handleStopClearFriends,
+    downloadClearLogs
   };
 };
