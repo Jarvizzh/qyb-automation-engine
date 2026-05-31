@@ -73,7 +73,7 @@ export const ClearFriendsTab: React.FC = () => {
       {/* 1. Header & Configuration Card */}
       <div className="card" style={{ marginBottom: '2rem', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
         <h4 style={{ color: 'var(--accent-pink)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1.5rem 0' }}>
-          🧹 流失客户一键清理工具
+          🗑️ 流失客户一键清理工具
         </h4>
         
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>

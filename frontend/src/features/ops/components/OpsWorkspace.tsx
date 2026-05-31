@@ -52,7 +52,7 @@ export const OpsWorkspace: React.FC = () => {
               to="/ops/clear-friends" 
               className={({ isActive }) => `sub-tab ${isActive ? 'active' : ''}`}
             >
-              🧹 流失客户清理
+              🗑️ 流失客户清理
             </NavLink>
           </div>
 
