@@ -78,7 +78,7 @@ export const ClearFriendsTab: React.FC = () => {
         
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {/* Target Corporation Select */}
-          <div className="input-group" style={{ flex: '1 1 250px', marginBottom: 0 }}>
+          <div className="input-group" style={{ flex: '0 0 200px', marginBottom: 0 }}>
             <label>选择目标企业简称</label>
             <select 
               value={selectedClearCorp} 
@@ -94,7 +94,7 @@ export const ClearFriendsTab: React.FC = () => {
           </div>
 
           {/* Target Friend Relationship Type Select */}
-          <div className="input-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
+          <div className="input-group" style={{ flex: '0 0 150px', marginBottom: 0 }}>
             <label>待清理好友类型</label>
             <select 
               value={clearZombieType} 
@@ -136,7 +136,7 @@ export const ClearFriendsTab: React.FC = () => {
                 className="btn btn-primary" 
                 onClick={handleStartClearFriends} 
                 disabled={isClearActionRunning || !selectedClearCorp}
-                style={{ padding: '0.6rem 1.2rem', gap: '0.4rem' }}
+                style={{ height: '46px', padding: '0 1.8rem', gap: '0.4rem', boxSizing: 'border-box' }}
               >
                 <Play size={16} /> 开始清理
               </button>
@@ -144,7 +144,7 @@ export const ClearFriendsTab: React.FC = () => {
               <button 
                 className="btn btn-danger" 
                 onClick={handleStopClearFriends}
-                style={{ padding: '0.6rem 1.2rem', gap: '0.4rem' }}
+                style={{ height: '46px', padding: '0 1.8rem', gap: '0.4rem', boxSizing: 'border-box' }}
               >
                 <Square size={16} /> 强制停止
               </button>
