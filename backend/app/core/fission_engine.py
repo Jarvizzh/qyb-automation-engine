@@ -69,15 +69,23 @@ def get_tag_id_by_name(session_id, tag_name, tag_type="smart", corp_id=None):
                 res = search_id(item)
                 if res: return res
         elif isinstance(data, dict):
+            # Check if this node is a tag group (contains tags/children lists)
+            is_group = False
+            for key in ['tags', 'children', 'dis_list']:
+                if key in data and isinstance(data[key], list):
+                    is_group = True
+                    break
+
             # 适配各种可能的键名
             name = data.get('wx_name') or data.get('name') or data.get('tag_name') or data.get('group_name')
             tag_id = data.get('wxid') or data.get('id') or data.get('tag_id')
 
-            if name:
-                found_tags.append(name)
-
-            if name == tag_name and tag_id:
-                return tag_id
+            # We must only match leaf tags (which are not tag groups)
+            if not is_group:
+                if name:
+                    found_tags.append(name)
+                if name == tag_name and tag_id:
+                    return tag_id
 
             # 递归搜索子节点
             for key in ['tags', 'children', 'dis_list', 'data']:
