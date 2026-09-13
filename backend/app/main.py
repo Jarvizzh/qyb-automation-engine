@@ -214,18 +214,7 @@ task_manager = TaskManager()
 
 @app.get("/api/auth/check-status")
 async def check_auth_status(db: Session = Depends(database.get_db)):
-    config = db.query(models.SystemConfig).filter(models.SystemConfig.key == "secret_key").first()
-    if not config:
-        return {"is_verified": False}
-    
-    # 检查是否过期 (3天)
-    now = datetime.datetime.now()
-    if config.updated_at and (now - config.updated_at).days >= 3:
-        # 已过期，删除密钥
-        db.delete(config)
-        db.commit()
-        return {"is_verified": False, "reason": "expired"}
-        
+    # 直接免密激活，无需远程验证或过期校验
     return {"is_verified": True}
 
 @app.post("/api/auth/logout")
@@ -238,31 +227,16 @@ async def logout(db: Session = Depends(database.get_db)):
 
 @app.post("/api/auth/verify-secret")
 async def verify_secret(req: schemas.SecretVerifyRequest, db: Session = Depends(database.get_db)):
-    secret_key = req.secret_key
-    verify_url = f"http://szgaocheng.cn/api/auth/secret/{secret_key}"
-    
-    try:
-        response = requests.get(verify_url, timeout=10)
-        if response.status_code == 200:
-            # 验证通过，保存密钥
-            config = db.query(models.SystemConfig).filter(models.SystemConfig.key == "secret_key").first()
-            if config:
-                config.value = secret_key
-            else:
-                config = models.SystemConfig(key="secret_key", value=secret_key)
-                db.add(config)
-            db.commit()
-            return {"status": "success", "message": "验证通过"}
-        elif response.status_code in [401, 403]:
-            raise HTTPException(status_code=401, detail="密钥验证不通过，请检查密钥是否正确")
-        else:
-            raise HTTPException(status_code=response.status_code, detail=f"系统未知错误 (Code: {response.status_code})")
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"无法连接验证服务器: {str(e)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"验证过程出错: {str(e)}")
+    secret_key = req.secret_key or "activated"
+    # 本地直接验证通过并持久化配置，免去远程网络请求
+    config = db.query(models.SystemConfig).filter(models.SystemConfig.key == "secret_key").first()
+    if config:
+        config.value = secret_key
+    else:
+        config = models.SystemConfig(key="secret_key", value=secret_key)
+        db.add(config)
+    db.commit()
+    return {"status": "success", "message": "验证通过"}
 
 @app.post("/api/auth/login")
 async def login(req: schemas.LoginRequest, db: Session = Depends(database.get_db)):
